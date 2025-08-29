@@ -1,0 +1,317 @@
+---
+title: "API 参考"
+description: "SPAvatarKit SDK 完整的 API 文档"
+---
+
+## 核心类
+
+### AvatarSDK
+
+SDK 的主要入口类，负责初始化和全局配置。
+
+<CodeGroup>
+
+```swift AvatarSDK.swift
+public final class AvatarSDK {
+    // 初始化 SDK
+    static func initialize(
+        with config: AvatarConfig, 
+        completion: @escaping (Result<Void, AvatarError>) -> Void
+    )
+    
+    // 检查初始化状态
+    static var isInitialized: Bool { get }
+    
+    // 设置日志级别
+    static func setLogLevel(_ level: LogLevel)
+    
+    // 清理资源
+    static func cleanup()
+    
+    // 预加载模型
+    static func preloadModel(
+        _ url: URL, 
+        completion: @escaping (Result<Void, AvatarError>) -> Void
+    )
+}
+```
+
+</CodeGroup>
+
+### AvatarRenderer
+
+数字人渲染器，负责模型的加载、渲染和控制。
+
+<CodeGroup>
+
+```swift AvatarRenderer.swift
+public final class AvatarRenderer: UIView {
+    // 加载模型
+    func load(model url: URL) throws
+    
+    // 开始渲染
+    func start()
+    
+    // 停止渲染
+    func stop()
+    
+    // 应用音频
+    func apply(audio url: URL) throws
+    
+    // 设置代理
+    var delegate: AvatarRendererDelegate?
+    
+    // 渲染状态
+    var isRendering: Bool { get }
+    
+    // 当前帧率
+    var currentFPS: Double { get }
+    
+    // 渲染质量
+    var quality: RenderQuality { get set }
+}
+```
+
+</CodeGroup>
+
+### AvatarConfig
+
+SDK 配置类，包含所有初始化参数。
+
+<CodeGroup>
+
+```swift AvatarConfig.swift
+public struct AvatarConfig {
+    let appId: String           // 应用标识
+    let appSecret: String       // 应用密钥
+    let environment: Environment // 运行环境
+    let endpoint: URL?          // 自定义 API 端点
+    let timeout: TimeInterval   // 网络超时时间
+    let cacheSize: Int          // 缓存大小限制
+    
+    // 便捷初始化方法
+    init(
+        appId: String, 
+        appSecret: String, 
+        environment: Environment = .production
+    )
+}
+```
+
+</CodeGroup>
+
+## 枚举类型
+
+### Environment
+
+运行环境配置。
+
+<CodeGroup>
+
+```swift Environment.swift
+public enum Environment {
+    case development    // 开发环境
+    case staging       // 测试环境
+    case production    // 生产环境
+}
+```
+
+</CodeGroup>
+
+### LogLevel
+
+日志级别配置。
+
+<CodeGroup>
+
+```swift LogLevel.swift
+public enum LogLevel {
+    case verbose   // 详细日志
+    case info      // 信息日志
+    case warning   // 警告日志
+    case error     // 错误日志
+    case none      // 关闭日志
+}
+```
+
+</CodeGroup>
+
+### RenderQuality
+
+渲染质量设置。
+
+<CodeGroup>
+
+```swift RenderQuality.swift
+public enum RenderQuality {
+    case low       // 低质量，高性能
+    case medium    // 中等质量
+    case high      // 高质量，低性能
+}
+```
+
+</CodeGroup>
+
+## 代理协议
+
+### AvatarRendererDelegate
+
+渲染器事件回调协议。
+
+<CodeGroup>
+
+```swift AvatarRendererDelegate.swift
+public protocol AvatarRendererDelegate: AnyObject {
+    // 渲染开始
+    func rendererDidStart(_ renderer: AvatarRenderer)
+    
+    // 渲染停止
+    func rendererDidStop(_ renderer: AvatarRenderer)
+    
+    // 渲染错误
+    func renderer(_ renderer: AvatarRenderer, didFail error: AvatarError)
+    
+    // 帧率更新
+    func renderer(_ renderer: AvatarRenderer, didUpdateFPS fps: Double)
+    
+    // 模型加载完成
+    func renderer(_ renderer: AvatarRenderer, didLoadModel url: URL)
+    
+    // 音频应用完成
+    func renderer(_ renderer: AvatarRenderer, didApplyAudio url: URL)
+}
+```
+
+</CodeGroup>
+
+## 错误处理
+
+### AvatarError
+
+SDK 错误类型定义。
+
+<CodeGroup>
+
+```swift AvatarError.swift
+public enum AvatarError: Error, LocalizedError {
+    case initializationFailed(String)
+    case modelNotFound(String)
+    case audioNotFound(String)
+    case networkError(String)
+    case invalidParameter(String)
+    case unsupportedOperation(String)
+    
+    public var errorDescription: String? {
+        switch self {
+        case .initializationFailed(let message):
+            return "初始化失败: \(message)"
+        case .modelNotFound(let message):
+            return "模型未找到: \(message)"
+        case .audioNotFound(let message):
+            return "音频未找到: \(message)"
+        case .networkError(let message):
+            return "网络错误: \(message)"
+        case .invalidParameter(let message):
+            return "参数无效: \(message)"
+        case .unsupportedOperation(let message):
+            return "不支持的操作: \(message)"
+        }
+    }
+}
+```
+
+</CodeGroup>
+
+## 使用示例
+
+### 基础初始化
+
+```swift
+// 创建配置
+let config = AvatarConfig(
+    appId: "your_app_id",
+    appSecret: "your_app_secret",
+    environment: .production
+)
+
+// 初始化 SDK
+AvatarSDK.initialize(with: config) { result in
+    switch result {
+    case .success:
+        print("SDK 初始化成功")
+    case .failure(let error):
+        print("SDK 初始化失败: \(error)")
+    }
+}
+```
+
+### 创建渲染器
+
+```swift
+// 创建渲染器
+let renderer = AvatarRenderer(frame: CGRect(x: 0, y: 0, width: 300, height: 400))
+renderer.delegate = self
+view.addSubview(renderer)
+
+// 加载模型
+do {
+    let modelURL = URL(string: "https://cdn.example.com/avatar.avatar")!
+    try renderer.load(model: modelURL)
+    renderer.start()
+} catch {
+    print("模型加载失败: \(error)")
+}
+```
+
+### 应用音频
+
+```swift
+// 应用音频文件
+do {
+    let audioURL = URL(string: "https://cdn.example.com/audio.wav")!
+    try renderer.apply(audio: audioURL)
+} catch {
+    print("音频应用失败: \(error)")
+}
+```
+
+### 实现代理方法
+
+```swift
+extension ViewController: AvatarRendererDelegate {
+    func rendererDidStart(_ renderer: AvatarRenderer) {
+        print("渲染开始")
+    }
+    
+    func renderer(_ renderer: AvatarRenderer, didFail error: AvatarError) {
+        print("渲染错误: \(error)")
+    }
+    
+    func renderer(_ renderer: AvatarRenderer, didUpdateFPS fps: Double) {
+        print("当前帧率: \(fps)")
+    }
+}
+```
+
+## 错误码参考
+
+| 错误类型 | 错误码 | 描述 | 解决方案 |
+|----------|--------|------|----------|
+| `initializationFailed` | 1001 | SDK 初始化失败 | 检查网络连接和配置参数 |
+| `modelNotFound` | 2001 | 模型文件未找到 | 验证模型 URL 和网络连接 |
+| `audioNotFound` | 2002 | 音频文件未找到 | 检查音频文件路径 |
+| `networkError` | 3001 | 网络连接错误 | 检查网络状态和服务器可用性 |
+| `invalidParameter` | 4001 | 参数无效 | 检查传入的参数值 |
+| `unsupportedOperation` | 5001 | 不支持的操作 | 检查 SDK 版本和功能支持 |
+
+## 线程安全
+
+- **主线程**: UI 相关操作必须在主线程执行
+- **后台线程**: 网络请求和文件操作在后台线程执行
+- **回调**: 所有代理回调都在主线程执行
+
+## 内存管理
+
+- SDK 会自动管理内部资源
+- 在 `deinit` 中调用 `cleanup()` 清理资源
+- 避免循环引用，使用 `weak` 引用代理对象 

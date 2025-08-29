@@ -1,0 +1,225 @@
+一、介绍
+本SDK是轻量、高性能的数字人驱动工具包，支持通过音频数据驱动虚拟数字人进行实时口型同步与表情渲染。开发者可通过简单集成，在 iOS 应用中快速实现可实时交互的数字人角色。
+本 SDK 使用 Swift 语言 和 Metal 渲染技术 实现，提供统一封装的组件化接口，支持角色切换、实时对话与播放控制，并兼容 CocoaPods、Swift Package 等主流集成方式，适用各类场景。
+二、快速开始
+暂时无法在飞书文档外展示此内容
+2.1 准备工作
+1. 获取App key ，角色资源包：联系技术人员获取；
+2. 系统 Framework 与 第三方库：
+  - 系统 Framework：MetalKit / AVFoundation
+  - 三方库：SwiftProtobuf
+3. 客户端硬件与系统要求
+  - iPhone 13 及以上
+  - 目前要求 iOS 18.0 及以上
+2.2 SDK集成
+提供三种集成方式供iOS开发者选择：
+- 手动集成
+- Cocoapods
+- Swift Package
+1. 手动集成
+  1. 下载SDK，从对接支持人员处获取
+  2. 托拽SPAvatarKit.framework文件到Xcode工程内（勾选Copy items if needed）
+2. 通过Cocoapods集成
+  在工程的Podfile里面添加以下代码:
+pod 'SPAvatarKit'
+  保存并执行pod install,然后用后缀为.xcworkspace的文件打开工程。
+3. 通过Swift Package集成
+  1. 在Xcode中，打开你的项目
+  2. 选择"File" -> "Swift Packages" -> "Add Package Dependency..."
+  3. 在文本框中输入SDK的GitHub地址
+  4. 点击"Next"，选择要使用的版本，然后点击"Finish"
+2.3 解压缩角色资源包
+1. 从对接支持人员获取角色资源 （zip）解压缩 放置到角色资源根目录：
+暂时无法在飞书文档外展示此内容
+  解压缩后文件夹以角色ID命名，其中包含两个文件夹：model，animation；以及character.json配置文件
+2. 现有角色信息：
+角色
+照片
+备注
+小美
+
+[图片]
+
+2.4 导入头文件
+在工程的入口（通常是AppDelegate文件）导入头文件
+如果是Objective-C工程，请在对应bridging-header.h中导入
+import SPAvatarKit
+2.5 启动SDK
+1. 示例代码
+/* 启动SDK，在App入口执行：
+  1.创建Configuration，配置基础信息
+  2.通过Configuration启动SPAvatarSDK
+*/
+let configuration = SPAvatarSDK.Configuration(appID: "appID", rootPath: "数字人资源根路径")
+SPAvatarSDK.shared.setup(configuration: configuration, delegate: self)
+
+2. 需要设置：
+  1. appID：从技术对接人员获取；
+  2. rootPath：对接方根据实际位置自行设置；
+2.6 创建服务长连接
+1. 对接方服务端需通过appID和AccessKey获取临时token，并将临时token下发给客户端
+目前鉴权逻辑还在完善中，可直接在客户端固定 token = ""
+2.7 使用音频驱动角色
+1. 通过向 SPCharacterManager 传入 PCM 音频数据，可实时驱动虚拟数字人完成口型同步与表情实时渲染；
+目前PCM数据只支持16000采样率 16bit 单通道格式
+2. 使用前提：
+  1. 已成功调用 SPAvatarSDK.setup() 并收到 avatarKitDidStart() 回调。
+  2. 已解压角色资源包，rootPath 设置正确。
+  3. 网络正常（若依赖远程服务）。
+3. 示例代码：
+每次创建一个新的数字人都要创建新的SPCharacterManager和SPCharacterView。
+/* 启动SDK，在App入口执行：
+  1.创建Configuration，配置基础信息
+  2.通过AppId启动SPAvatarSDK
+*/
+let configuration = SPAvatarSDK.Configuration(rootPath: "数字人资源根路径")
+SPAvatarSDK.shared.setup(appID: "appID", configuration: configuration, delegate: self)
+
+/* 创建SPCharacterManager:
+   1.根据数字人ID创建数字人
+   2.通过数字人创建SPCharacterManager
+*/
+let character = SPAvatar.createCharacter(path: "xiaomei")
+let characterManager = SPCharacterManager(character: character)
+
+/* 通过SPCharacterManager创建数字人视图
+*/
+let characterView = SPCharacterView(characterManager: characterManager)
+
+/* 对话操作
+*/
+// 开始流式对话
+characterManager.start(token: "token")
+// 向服务端发送数据
+characterManager.sendAudioData("pcm音频数据")
+// 打断对话
+characterManager.interrupt()
+// 关闭对话，shouldCleanup为true时会清理资源
+characterManager.close(shouldCleanup: true)
+4. 参数说明
+  - characterId：角色唯一标识，对应资源包文件夹路径；
+  - pcmData：pcm音频数据，取样率为16000，即未经压缩的原始数字音频数据
+三、核心功能表（SPCharacterManager）
+功能方法
+示例
+说明
+返回
+参数
+开始对话
+start(token: String)
+开始流式对话，可以持续接收音频和动画数据；
+Void
+characterId: String
+
+结束对话
+close(shouldCleanup: Bool)
+结束对话，关闭服务并重置对话状态。
+Void
+shouldCleanup: Bool
+音频驱动
+sendAudioData(_ audioData: Data)
+发送音频数据到服务器，使用音频驱动角色
+Void
+_ audioData: Data
+
+打断当前对话
+interrupt()
+打断当前对话，人物回到初始状态，并保持当前连接；
+Void
+无
+四、回调说明（Delegate Methods）
+以下为 本SDK 提供的回调接口列表
+4.1 SPAvatarKitDelegate
+avatarSDKDidStarted
+SDK服务启动结果的回调
+avatarSDKFailedToStart(error: SPAvatarSDK.Error)
+SDK启动失败，Error会提供错误信息
+
+4.2 SPCharacterManagerDelegate
+characterManager(_ characterManager: SPCharacterManager, didUpdatedConnectionState newConnectionState: SPAvatar.ConnectionState)
+服务连接状态发生了更新
+
+characterManager(_ characterManager: SPCharacterManager, didUpdatedConversationState newConversationState: SPAvatar.ConversationState)
+对话状态发生了更新
+
+characterManager(_ characterManager: SPCharacterManager, didUpdatedPlayerState newPlayerState: SPAvatar.PlayerState)
+播放器状态发生了更新
+characterManager(_ characterManager: SPCharacterManager, playerDidEncounteredError error: SPAvatar.PlayerError)
+播放器遇到了错误
+characterManager(_ characterManager: SPCharacterManager, didReceivedAudioData audioData: Data)
+从服务器收到了新的音频数据
+characterManager(_ characterManager: SPCharacterManager, didReceivedFlameFrames flameFlames: [FlameFrameData]) 
+从服务器收到了新的动画帧
+
+characterManager(_ characterManager: SPCharacterManager, didReceivedError errorMsg: String)
+从服务器收到了错误
+
+五、状态类型
+5.1 ConnectionState（连接状态）
+disconnected
+未连接
+connecting
+连接中
+connected
+已连接
+failed
+连接失败
+5.2 ConversationState（对话状态）
+idle
+闲置中
+starting
+启动中
+active
+已激活
+closing
+正在关闭
+5.3 PlayerState（播放器状态）
+idle
+闲置
+playing
+播放中
+六、错误类型
+1. 错误都通过delegate方式告知：
+  - SPAvatarKitDelegate，是SDK层的回调，其中包含SDK启动成功和失败的回调；
+  - SPCharacterManagerDelegate，是数字人管理器的回调，其中包含对话、播放器、服务连接状态、错误的回调以及从服务器收到数据的回调；
+2. 错误具体描述列表
+以下是各模块可能出现的错误类型，按功能模块分类列出，所有错误均通过对应 delegate 回调传出。
+  1. SDK 初始化错误（SPAvatarKitError）
+错误码
+错误名称
+描述
+处理建议
+1001
+VerifiedFailed
+鉴权失败
+检查 token是否正确
+1002
+
+InvalidConfiguration
+
+配置信息不合法
+请检查是否已设置角色资源路径等必要字段
+1003
+NetworkingError
+网络错误
+检查网络是否异常
+  2. 播放器错误（SPAvatar.PlayerError）
+错误码
+错误名称
+描述
+处理建议
+2001
+notStartedSDK
+未正常启动SDK
+检查是否启动SDK成功
+2002
+requestRecordPermissionFailed
+请求录音权限失败，如不需要录音则忽略
+检查设备录音权限是否开启
+2003
+startAudioEngineFailed
+启动音频引擎失败
+检查AVAudioSession是否正常，是否在其他地方进行了设置
+七、常见问题
+1. 播放器启动失败，检查是否在SDK设置了AVAudioSession产生了冲突
+2. 播放声音异常，速度不正常或者有杂音，检查设置的音频格式和传入的音频数据格式是否一致

@@ -1,0 +1,426 @@
+---
+title: "最佳实践"
+description: "SPAvatarKit SDK 性能优化和开发建议"
+---
+
+## 性能优化
+
+### 内存管理
+
+正确的内存管理对于数字人渲染至关重要。
+
+```swift
+class AvatarViewController: UIViewController {
+    private var renderer: AvatarRenderer?
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupRenderer()
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        renderer?.start()
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        renderer?.stop()
+    }
+    
+    deinit {
+        renderer?.stop()
+        renderer = nil
+    }
+}
+```
+
+### 资源预加载
+
+预加载常用模型可以提升用户体验。
+
+```swift
+// 预加载常用模型
+func preloadModels() {
+    let modelURLs = [
+        URL(string: "https://cdn.example.com/model1.avatar")!,
+        URL(string: "https://cdn.example.com/model2.avatar")!
+    ]
+    
+    for url in modelURLs {
+        AvatarSDK.preloadModel(url) { result in
+            switch result {
+            case .success:
+                print("模型预加载成功: \(url)")
+            case .failure(let error):
+                print("模型预加载失败: \(error)")
+            }
+        }
+    }
+}
+```
+
+### 渲染质量优化
+
+根据设备性能动态调整渲染质量。
+
+```swift
+func optimizeRenderQuality() {
+    // 检测设备性能
+    let deviceSupportsHighQuality = UIDevice.current.userInterfaceIdiom == .pad || 
+                                   ProcessInfo.processInfo.processorCount >= 6
+    
+    // 设置合适的渲染质量
+    renderer.quality = deviceSupportsHighQuality ? .high : .medium
+    
+    // 监控帧率并动态调整
+    renderer.delegate = self
+}
+
+extension ViewController: AvatarRendererDelegate {
+    func renderer(_ renderer: AvatarRenderer, didUpdateFPS fps: Double) {
+        if fps < 20 {
+            // 帧率过低，降低质量
+            renderer.quality = .low
+        } else if fps > 50 && renderer.quality == .low {
+            // 帧率良好，提升质量
+            renderer.quality = .medium
+        }
+    }
+}
+```
+
+## 错误处理
+
+### 优雅降级
+
+实现多级降级策略，确保应用稳定性。
+
+```swift
+class RobustAvatarRenderer {
+    private var primaryRenderer: AvatarRenderer?
+    private var fallbackRenderer: AvatarRenderer?
+    private var isUsingFallback = false
+    
+    func loadModel(_ url: URL) {
+        do {
+            try primaryRenderer?.load(model: url)
+            isUsingFallback = false
+        } catch {
+            print("主渲染器加载失败，使用备用渲染器")
+            try? fallbackRenderer?.load(model: url)
+            isUsingFallback = true
+        }
+    }
+    
+    func start() {
+        if isUsingFallback {
+            fallbackRenderer?.start()
+        } else {
+            primaryRenderer?.start()
+        }
+    }
+}
+```
+
+### 重试机制
+
+实现智能重试机制处理临时性错误。
+
+```swift
+func loadModelWithRetry(_ url: URL, maxRetries: Int = 3) {
+    var retryCount = 0
+    
+    func attemptLoad() {
+        do {
+            try renderer.load(model: url)
+        } catch {
+            retryCount += 1
+            if retryCount < maxRetries {
+                // 指数退避重试
+                let delay = pow(2.0, Double(retryCount))
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    attemptLoad()
+                }
+            } else {
+                print("模型加载失败，已达到最大重试次数")
+                showErrorAlert(error)
+            }
+        }
+    }
+    
+    attemptLoad()
+}
+```
+
+## 用户体验
+
+### 加载状态管理
+
+提供清晰的加载反馈，提升用户体验。
+
+```swift
+class AvatarView: UIView {
+    private let activityIndicator = UIActivityIndicatorView(style: .large)
+    private let renderer = AvatarRenderer()
+    private let statusLabel = UILabel()
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupUI()
+    }
+    
+    private func setupUI() {
+        // 设置加载指示器
+        addSubview(activityIndicator)
+        activityIndicator.center = center
+        activityIndicator.hidesWhenStopped = true
+        
+        // 设置状态标签
+        addSubview(statusLabel)
+        statusLabel.textAlignment = .center
+        statusLabel.textColor = .gray
+        statusLabel.frame = CGRect(x: 0, y: bounds.height - 40, width: bounds.width, height: 30)
+    }
+    
+    func loadModel(_ url: URL) {
+        activityIndicator.startAnimating()
+        statusLabel.text = "正在加载模型..."
+        
+        do {
+            try renderer.load(model: url)
+            renderer.delegate = self
+        } catch {
+            activityIndicator.stopAnimating()
+            statusLabel.text = "加载失败"
+            showError(error)
+        }
+    }
+}
+
+extension AvatarView: AvatarRendererDelegate {
+    func renderer(_ renderer: AvatarRenderer, didLoadModel url: URL) {
+        DispatchQueue.main.async {
+            self.activityIndicator.stopAnimating()
+            self.statusLabel.text = "模型加载完成"
+            self.renderer.start()
+        }
+    }
+    
+    func renderer(_ renderer: AvatarRenderer, didFail error: AvatarError) {
+        DispatchQueue.main.async {
+            self.activityIndicator.stopAnimating()
+            self.statusLabel.text = "渲染错误"
+            self.showError(error)
+        }
+    }
+}
+```
+
+### 网络状态监听
+
+根据网络状态调整策略。
+
+```swift
+class NetworkAwareAvatarRenderer {
+    private let networkMonitor = NWPathMonitor()
+    private var renderer: AvatarRenderer?
+    private var isOnline = true
+    
+    func setupNetworkMonitoring() {
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            DispatchQueue.main.async {
+                let wasOnline = self?.isOnline ?? true
+                self?.isOnline = path.status == .satisfied
+                
+                if !wasOnline && self?.isOnline == true {
+                    self?.onNetworkAvailable()
+                } else if wasOnline && self?.isOnline == false {
+                    self?.onNetworkUnavailable()
+                }
+            }
+        }
+        networkMonitor.start(queue: DispatchQueue.global())
+    }
+    
+    private func onNetworkAvailable() {
+        print("网络恢复，重新加载模型")
+        // 重新加载模型或恢复渲染
+    }
+    
+    private func onNetworkUnavailable() {
+        print("网络断开，切换到离线模式")
+        // 切换到离线模式或显示提示
+    }
+}
+```
+
+## 调试技巧
+
+### 日志配置
+
+根据环境配置合适的日志级别。
+
+```swift
+func configureLogging() {
+    #if DEBUG
+    // 开发环境启用详细日志
+    AvatarSDK.setLogLevel(.verbose)
+    #else
+    // 生产环境只记录错误
+    AvatarSDK.setLogLevel(.error)
+    #endif
+    
+    // 启用远程日志上传（可选）
+    AvatarSDK.enableRemoteLogUpload(true)
+}
+```
+
+### 性能监控
+
+实现性能监控帮助优化应用。
+
+```swift
+class PerformanceMonitor {
+    private var startTime: CFTimeInterval = 0
+    private var metrics: [String: Double] = [:]
+    
+    func startMonitoring(_ operation: String) {
+        startTime = CACurrentMediaTime()
+    }
+    
+    func endMonitoring(_ operation: String) {
+        let duration = CACurrentMediaTime() - startTime
+        metrics[operation] = duration
+        
+        #if DEBUG
+        print("\(operation) 耗时: \(duration) 秒")
+        #endif
+    }
+    
+    func getMetrics() -> [String: Double] {
+        return metrics
+    }
+}
+```
+
+## 安全考虑
+
+### 配置安全
+
+保护敏感配置信息。
+
+```swift
+// 使用环境变量或配置文件
+struct Config {
+    static let appId: String = {
+        guard let appId = ProcessInfo.processInfo.environment["AVATAR_APP_ID"] else {
+            fatalError("AVATAR_APP_ID 环境变量未设置")
+        }
+        return appId
+    }()
+    
+    static let appSecret: String = {
+        guard let appSecret = ProcessInfo.processInfo.environment["AVATAR_APP_SECRET"] else {
+            fatalError("AVATAR_APP_SECRET 环境变量未设置")
+        }
+        return appSecret
+    }()
+}
+```
+
+### 输入验证
+
+验证所有外部输入。
+
+```swift
+func validateModelURL(_ url: URL) -> Bool {
+    // 检查 URL 格式
+    guard url.scheme == "https" else {
+        print("只支持 HTTPS 协议")
+        return false
+    }
+    
+    // 检查域名白名单
+    let allowedDomains = ["cdn.example.com", "assets.example.com"]
+    guard let host = url.host, allowedDomains.contains(host) else {
+        print("不支持的域名: \(url.host ?? "unknown")")
+        return false
+    }
+    
+    return true
+}
+```
+
+## 测试策略
+
+### 单元测试
+
+为关键功能编写单元测试。
+
+```swift
+import XCTest
+@testable import YourApp
+
+class AvatarRendererTests: XCTestCase {
+    var renderer: AvatarRenderer!
+    
+    override func setUp() {
+        super.setUp()
+        renderer = AvatarRenderer(frame: .zero)
+    }
+    
+    override func tearDown() {
+        renderer = nil
+        super.tearDown()
+    }
+    
+    func testModelLoading() {
+        let expectation = XCTestExpectation(description: "模型加载完成")
+        
+        renderer.delegate = self
+        delegateExpectation = expectation
+        
+        do {
+            let testURL = URL(string: "https://cdn.example.com/test.avatar")!
+            try renderer.load(model: testURL)
+        } catch {
+            XCTFail("模型加载失败: \(error)")
+        }
+        
+        wait(for: [expectation], timeout: 10.0)
+    }
+}
+```
+
+### 集成测试
+
+测试完整的集成流程。
+
+```swift
+class AvatarIntegrationTests: XCTestCase {
+    func testFullIntegration() {
+        // 1. 初始化 SDK
+        let config = AvatarConfig(
+            appId: "test_app_id",
+            appSecret: "test_app_secret",
+            environment: .development
+        )
+        
+        let initExpectation = XCTestExpectation(description: "SDK 初始化")
+        AvatarSDK.initialize(with: config) { result in
+            XCTAssertTrue(result.isSuccess)
+            initExpectation.fulfill()
+        }
+        
+        wait(for: [initExpectation], timeout: 5.0)
+        
+        // 2. 创建渲染器
+        let renderer = AvatarRenderer(frame: CGRect(x: 0, y: 0, width: 300, height: 400))
+        
+        // 3. 加载模型
+        let loadExpectation = XCTestExpectation(description: "模型加载")
+        // ... 测试代码
+    }
+}
+``` 

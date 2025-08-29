@@ -1,0 +1,206 @@
+---
+title: "快速开始"
+description: "5 分钟快速集成 SPAvatarKit SDK"
+---
+
+## 环境要求
+
+在开始之前，请确保您的开发环境满足以下要求：
+
+- **Xcode**: 14.0 或更高版本
+- **iOS**: 14.0 或更高版本
+- **设备**: 支持 Metal 的 iOS 设备（iPhone 6s 及以上）
+
+## 步骤 1: 选择集成方式
+
+<Tabs>
+<TabItem value="spm" label="Swift Package Manager" default>
+
+### 使用 Swift Package Manager
+
+1. 在 Xcode 中打开您的项目
+2. 选择 `File` → `Add Packages...`
+3. 输入包地址：`https://github.com/your-org/SPAvatarKit.git`
+4. 选择版本规则：**Up to Next Major Version**
+5. 选择目标项目并点击 `Add Package`
+
+</TabItem>
+<TabItem value="cocoapods" label="CocoaPods">
+
+### 使用 CocoaPods
+
+1. 在项目根目录创建或编辑 `Podfile`：
+
+```ruby title="Podfile"
+platform :ios, '14.0'
+use_frameworks!
+
+target 'YourApp' do
+  pod 'SPAvatarKit', '~> 0.9'
+end
+```
+
+2. 安装依赖：
+
+```bash
+pod repo update
+pod install
+```
+
+3. 使用 `.xcworkspace` 文件打开项目
+
+</TabItem>
+</Tabs>
+
+## 步骤 2: 配置权限
+
+在 `Info.plist` 中添加必要的权限描述：
+
+```xml title="Info.plist"
+<!-- 麦克风权限 -->
+<key>NSMicrophoneUsageDescription</key>
+<string>用于实时语音采集和口型驱动</string>
+
+<!-- 相机权限 -->
+<key>NSCameraUsageDescription</key>
+<string>用于人脸识别和表情驱动</string>
+
+<!-- 网络权限 -->
+<key>NSAppTransportSecurity</key>
+<dict>
+    <key>NSAllowsArbitraryLoads</key>
+    <true/>
+</dict>
+```
+
+## 步骤 3: 初始化 SDK
+
+在 `AppDelegate.swift` 中初始化 SDK：
+
+```swift title="AppDelegate.swift"
+import UIKit
+import SPAvatarKit
+
+@main
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    func application(_ application: UIApplication, 
+                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        
+        // 配置 SDK
+        let config = AvatarConfig(
+            appId: "your_app_id",
+            appSecret: "your_app_secret",
+            environment: .production
+        )
+        
+        // 初始化 SDK
+        AvatarSDK.initialize(with: config) { result in
+            switch result {
+            case .success:
+                print("✅ SDK 初始化成功")
+            case .failure(let error):
+                print("❌ SDK 初始化失败: \(error)")
+            }
+        }
+        
+        return true
+    }
+}
+```
+
+## 步骤 4: 创建数字人视图
+
+在您的 ViewController 中添加数字人渲染器：
+
+```swift title="ViewController.swift"
+import UIKit
+import SPAvatarKit
+
+class ViewController: UIViewController {
+    
+    private var avatarRenderer: AvatarRenderer!
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupAvatarRenderer()
+    }
+    
+    private func setupAvatarRenderer() {
+        // 创建渲染器
+        avatarRenderer = AvatarRenderer(frame: CGRect(x: 0, y: 100, width: 300, height: 400))
+        avatarRenderer.center.x = view.center.x
+        view.addSubview(avatarRenderer)
+        
+        // 设置代理
+        avatarRenderer.delegate = self
+        
+        // 加载模型
+        loadAvatarModel()
+    }
+    
+    private func loadAvatarModel() {
+        guard let modelURL = URL(string: "https://cdn.example.com/avatar.avatar") else {
+            print("❌ 无效的模型 URL")
+            return
+        }
+        
+        do {
+            try avatarRenderer.load(model: modelURL)
+            avatarRenderer.start()
+        } catch {
+            print("❌ 模型加载失败: \(error)")
+        }
+    }
+}
+
+// MARK: - AvatarRendererDelegate
+extension ViewController: AvatarRendererDelegate {
+    func rendererDidStart(_ renderer: AvatarRenderer) {
+        print("✅ 渲染开始")
+    }
+    
+    func renderer(_ renderer: AvatarRenderer, didFail error: AvatarError) {
+        print("❌ 渲染错误: \(error)")
+    }
+    
+    func renderer(_ renderer: AvatarRenderer, didLoadModel url: URL) {
+        print("✅ 模型加载完成: \(url)")
+    }
+}
+```
+
+## 步骤 5: 运行测试
+
+1. 选择真机或模拟器
+2. 点击运行按钮
+3. 检查控制台输出，确认 SDK 初始化成功
+4. 观察数字人是否正确显示
+
+## 下一步
+
+恭喜！您已经成功集成了 SPAvatarKit SDK。接下来可以：
+
+<Columns cols={2}>
+  <Card
+    title="查看 API 文档"
+    icon="book"
+    href="/ios-sdk/api-reference"
+  >
+    了解更多 API 功能和使用方法
+  </Card>
+  <Card
+    title="最佳实践"
+    icon="star"
+    href="/ios-sdk/best-practices"
+  >
+    学习性能优化和开发技巧
+  </Card>
+</Columns>
+
+## 遇到问题？
+
+如果集成过程中遇到问题，请查看：
+
+- [常见问题](/ios-sdk/faq) - 常见集成问题解答
+- [技术支持](/ios-sdk/support) - 获取技术支持
+- [示例项目](/ios-sdk/examples) - 完整的示例代码 

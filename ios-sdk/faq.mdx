@@ -1,0 +1,390 @@
+---
+title: "常见问题"
+description: "SPAvatarKit SDK 常见问题解答"
+---
+
+## 集成问题
+
+<AccordionGroup>
+<Accordion title="Swift Package Manager 集成后编译失败">
+
+**问题描述**: 使用 SPM 集成后出现编译错误。
+
+**解决方案**:
+1. 检查 Xcode 版本是否满足要求 (14.0+)
+2. 清理项目缓存: `Product` → `Clean Build Folder`
+3. 删除 `DerivedData` 文件夹
+4. 重新拉取依赖包
+
+**预防措施**:
+- 使用稳定的 Xcode 版本
+- 定期更新依赖包
+- 在 CI/CD 中使用相同的 Xcode 版本
+
+</Accordion>
+
+<Accordion title="CocoaPods 集成后运行崩溃">
+
+**问题描述**: 使用 CocoaPods 集成后应用启动崩溃。
+
+**解决方案**:
+1. 检查 `Podfile` 中的 iOS 版本设置
+2. 确保添加了 `use_frameworks!`
+3. 运行 `pod deintegrate` 然后重新 `pod install`
+4. 检查 `Build Settings` 中的架构设置
+
+**常见配置**:
+```ruby
+platform :ios, '14.0'
+use_frameworks!
+
+target 'YourApp' do
+  pod 'SPAvatarKit', '~> 0.9'
+end
+```
+
+</Accordion>
+
+<Accordion title="架构不匹配错误">
+
+**问题描述**: 编译时出现 "No matching architecture" 错误。
+
+**解决方案**:
+1. 检查 `Build Settings` → `Architectures` 设置
+2. 确保 `Valid Architectures` 包含 `arm64`
+3. 检查 `Excluded Architectures` 设置
+4. 清理项目并重新编译
+
+</Accordion>
+</AccordionGroup>
+
+## 运行时问题
+
+<AccordionGroup>
+<Accordion title="权限被拒绝导致功能异常">
+
+**问题描述**: 麦克风或相机权限被拒绝，导致相关功能无法使用。
+
+**解决方案**:
+1. 检查 `Info.plist` 中的权限描述是否完整
+2. 引导用户到设置中开启权限
+3. 提供权限被拒绝时的替代方案
+
+**代码示例**:
+```swift
+func checkPermissions() {
+    switch AVAudioSession.sharedInstance().recordPermission {
+    case .granted:
+        // 权限已授予
+        break
+    case .denied:
+        // 权限被拒绝，引导用户到设置
+        showPermissionAlert()
+        break
+    case .undetermined:
+        // 请求权限
+        AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            // 处理结果
+        }
+        break
+    @unknown default:
+        break
+    }
+}
+```
+
+</Accordion>
+
+<Accordion title="模型加载失败">
+
+**问题描述**: 模型文件加载失败，显示错误信息。
+
+**可能原因**:
+1. 网络连接问题
+2. 模型文件路径错误
+3. 模型文件格式不支持
+4. 存储空间不足
+
+**排查步骤**:
+1. 检查网络连接状态
+2. 验证模型文件 URL 是否可访问
+3. 确认模型文件格式是否为支持的格式
+4. 检查设备存储空间
+
+**解决方案**:
+```swift
+func loadModelWithValidation(_ url: URL) {
+    // 1. 检查网络
+    guard NetworkMonitor.isConnected else {
+        showNetworkError()
+        return
+    }
+    
+    // 2. 验证 URL
+    guard url.scheme == "https" else {
+        showInvalidURLError()
+        return
+    }
+    
+    // 3. 尝试加载
+    do {
+        try renderer.load(model: url)
+    } catch {
+        handleLoadError(error)
+    }
+}
+```
+
+</Accordion>
+
+<Accordion title="SDK 初始化失败">
+
+**问题描述**: SDK 初始化时返回错误。
+
+**常见原因**:
+1. 网络连接问题
+2. AppID 或 AppSecret 错误
+3. 服务器不可用
+4. 设备时间不准确
+
+**解决方案**:
+1. 检查网络连接
+2. 验证 AppID 和 AppSecret 是否正确
+3. 确认服务器状态
+4. 检查设备时间设置
+
+</Accordion>
+</AccordionGroup>
+
+## 性能问题
+
+<AccordionGroup>
+<Accordion title="渲染帧率过低">
+
+**问题描述**: 数字人渲染帧率低于预期，影响用户体验。
+
+**可能原因**:
+1. 设备性能不足
+2. 模型复杂度过高
+3. 内存不足
+4. 后台进程干扰
+
+**优化建议**:
+1. 使用适合设备的模型
+2. 降低渲染分辨率
+3. 关闭不必要的后台进程
+4. 使用性能监控工具
+
+**代码示例**:
+```swift
+func optimizePerformance() {
+    // 设置合适的渲染质量
+    renderer.quality = deviceSupportsHighQuality ? .high : .medium
+    
+    // 监控帧率
+    renderer.delegate = self
+}
+
+extension ViewController: AvatarRendererDelegate {
+    func renderer(_ renderer: AvatarRenderer, didUpdateFPS fps: Double) {
+        if fps < 20 {
+            // 帧率过低，进行优化
+            renderer.quality = .low
+        }
+    }
+}
+```
+
+</Accordion>
+
+<Accordion title="内存使用过高">
+
+**问题描述**: 应用内存使用量过高，可能导致崩溃。
+
+**解决方案**:
+1. 及时释放不需要的渲染器实例
+2. 使用 `deinit` 清理资源
+3. 监控内存使用情况
+4. 实现内存警告处理
+
+**代码示例**:
+```swift
+class MemoryEfficientViewController: UIViewController {
+    private var renderer: AvatarRenderer?
+    
+    override func didReceiveMemoryWarning() {
+        super.didReceiveMemoryWarning()
+        
+        // 内存警告时释放资源
+        renderer?.stop()
+        renderer = nil
+    }
+    
+    deinit {
+        renderer?.stop()
+        renderer = nil
+    }
+}
+```
+
+</Accordion>
+
+<Accordion title="启动时间过长">
+
+**问题描述**: 应用启动时间过长，影响用户体验。
+
+**优化建议**:
+1. 延迟初始化 SDK
+2. 使用后台线程进行初始化
+3. 预加载常用资源
+4. 优化模型文件大小
+
+</Accordion>
+</AccordionGroup>
+
+## 网络问题
+
+<AccordionGroup>
+<Accordion title="网络连接不稳定">
+
+**问题描述**: 网络连接不稳定导致功能异常。
+
+**解决方案**:
+1. 实现网络状态监听
+2. 添加重试机制
+3. 提供离线模式
+4. 缓存重要资源
+
+**代码示例**:
+```swift
+class NetworkAwareAvatarRenderer {
+    private let networkMonitor = NWPathMonitor()
+    
+    func setupNetworkMonitoring() {
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            DispatchQueue.main.async {
+                if path.status == .satisfied {
+                    self?.onNetworkAvailable()
+                } else {
+                    self?.onNetworkUnavailable()
+                }
+            }
+        }
+        networkMonitor.start(queue: DispatchQueue.global())
+    }
+}
+```
+
+</Accordion>
+
+<Accordion title="HTTPS 证书问题">
+
+**问题描述**: HTTPS 证书验证失败。
+
+**解决方案**:
+1. 检查服务器证书是否有效
+2. 确认 `Info.plist` 中的网络安全配置
+3. 在开发环境使用 `NSAllowsArbitraryLoads`
+4. 生产环境使用有效的 SSL 证书
+
+</Accordion>
+</AccordionGroup>
+
+## 调试技巧
+
+<AccordionGroup>
+<Accordion title="如何启用详细日志">
+
+**解决方案**:
+```swift
+// 开发环境启用详细日志
+#if DEBUG
+AvatarSDK.setLogLevel(.verbose)
+#else
+AvatarSDK.setLogLevel(.error)
+#endif
+
+// 启用远程日志上传
+AvatarSDK.enableRemoteLogUpload(true)
+```
+
+</Accordion>
+
+<Accordion title="如何监控性能">
+
+**解决方案**:
+```swift
+class PerformanceMonitor {
+    private var startTime: CFTimeInterval = 0
+    
+    func startMonitoring() {
+        startTime = CACurrentMediaTime()
+    }
+    
+    func endMonitoring() {
+        let duration = CACurrentMediaTime() - startTime
+        print("操作耗时: \(duration) 秒")
+    }
+}
+```
+
+</Accordion>
+
+<Accordion title="如何排查崩溃问题">
+
+**排查步骤**:
+1. 启用崩溃日志收集
+2. 使用 Xcode 调试器
+3. 检查内存使用情况
+4. 验证线程安全
+
+</Accordion>
+</AccordionGroup>
+
+## 版本兼容性
+
+<AccordionGroup>
+<Accordion title="iOS 版本兼容性">
+
+**支持的 iOS 版本**: 14.0+
+
+**注意事项**:
+- 在 iOS 14.0 以下设备上会崩溃
+- 某些新功能可能只在更高版本可用
+- 建议在多个 iOS 版本上测试
+
+</Accordion>
+
+<Accordion title="Xcode 版本兼容性">
+
+**最低要求**: Xcode 14.0+
+
+**推荐版本**: Xcode 15.0+
+
+**注意事项**:
+- 使用较新版本的 Xcode 可以获得更好的性能
+- 某些编译优化只在较新版本中可用
+
+</Accordion>
+</AccordionGroup>
+
+## 获取帮助
+
+如果以上解答无法解决您的问题，请通过以下方式获取帮助：
+
+<Columns cols={2}>
+  <Card
+    title="技术支持"
+    icon="headset"
+    href="mailto:support@example.com"
+  >
+    发送邮件获取专业技术支持
+  </Card>
+  <Card
+    title="开发者社区"
+    icon="users"
+    href="https://github.com/your-org/SPAvatarKit/discussions"
+  >
+    在社区中提问和分享经验
+  </Card>
+</Columns> 
