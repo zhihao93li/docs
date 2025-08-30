@@ -1,0 +1,475 @@
+---
+title: "常见问题"
+description: "SPAvatarKit Flutter 插件常见问题解答"
+---
+
+## 安装和配置问题
+
+<AccordionGroup>
+<Accordion title="Flutter pub get 失败">
+
+**问题描述**: 运行 `flutter pub get` 时出现依赖解析错误。
+
+**可能原因**:
+- 插件路径配置错误
+- Flutter SDK 版本不兼容
+- 网络连接问题
+
+**解决方案**:
+1. 检查 `pubspec.yaml` 中的路径配置是否正确
+2. 确认 Flutter SDK 版本满足要求（3.3.0+）
+3. 清理项目缓存并重新获取依赖
+
+```bash
+flutter clean
+flutter pub get
+```
+
+**预防措施**:
+- 使用相对路径配置插件依赖
+- 定期更新 Flutter SDK 到稳定版本
+
+</Accordion>
+
+<Accordion title="iOS 编译失败">
+
+**问题描述**: 在 iOS 平台编译时出现错误。
+
+**常见错误信息**:
+```
+Error: iOS deployment target is below minimum required version
+```
+
+**解决方案**:
+1. 检查 iOS 部署目标版本设置
+2. 在 `ios/Podfile` 中设置最低版本：
+
+```ruby title="ios/Podfile"
+platform :ios, '18.0'
+```
+
+3. 清理并重新构建项目：
+
+```bash
+cd ios
+rm -rf Pods Podfile.lock
+cd ..
+flutter clean
+flutter pub get
+cd ios
+pod install
+```
+
+**注意事项**:
+- 确保 Xcode 版本为最新稳定版
+- 检查设备或模拟器的 iOS 版本
+
+</Accordion>
+
+<Accordion title="插件路径找不到">
+
+**问题描述**: 提示找不到 `sp_character_plugin` 插件。
+
+**错误信息**:
+```
+Because your_app depends on sp_character_plugin from path which doesn't exist, version solving failed.
+```
+
+**解决方案**:
+1. 确认插件文件夹位置正确
+2. 检查 `pubspec.yaml` 中的路径配置
+3. 使用绝对路径进行测试
+
+```yaml title="pubspec.yaml"
+dependencies:
+  sp_character_plugin:
+    path: /absolute/path/to/sp_character_plugin
+```
+
+**推荐做法**:
+- 将插件放在项目同级目录
+- 使用相对路径 `../sp_character_plugin`
+
+</Accordion>
+</AccordionGroup>
+
+## 运行时问题
+
+<AccordionGroup>
+<Accordion title="无法加载出数字人">
+
+**问题描述**: 调用 `loadCharacter` 后数字人无法正常显示。
+
+**排查步骤**:
+1. **检查加载状态**
+   ```dart
+   loadStateChanged: (state) {
+     print('当前加载状态: $state');
+     if (state == CharacterLoadState.failed) {
+       print('加载失败，请检查数字人ID和网络连接');
+     }
+   }
+   ```
+
+2. **验证数字人ID**
+   - 确认数字人ID是否正确
+   - 检查数字人是否在线可用
+   - 验证账户权限
+
+3. **检查网络连接**
+   - 确保设备网络正常
+   - 检查防火墙设置
+   - 验证服务器可达性
+
+4. **查看错误日志**
+   ```dart
+   didEncounteredPlayerError: (error) {
+     print('播放器错误: $error');
+     // 根据错误类型进行相应处理
+   }
+   ```
+
+**常见解决方案**:
+- 检查数字人线上状态是否正常
+- 验证认证令牌是否有效
+- 确认设备存储空间充足
+
+</Accordion>
+
+<Accordion title="发送音频数据没有反应">
+
+**问题描述**: 调用 `sendAudioData` 后数字人没有响应。
+
+**排查清单**:
+1. **SDK 启动状态**
+   ```dart
+   // 确保在对话状态为 active 时发送音频
+   conversationStateChanged: (state) {
+     if (state == CharacterConversationState.active) {
+       print('可以发送音频数据了');
+     }
+   }
+   ```
+
+2. **服务连接状态**
+   ```dart
+   connectionStateChanged: (state) {
+     if (state == CharacterConnectionState.connected) {
+       print('服务连接成功');
+     } else if (state == CharacterConnectionState.error) {
+       print('服务连接失败');
+     }
+   }
+   ```
+
+3. **音频数据格式**
+   - 检查音频数据格式是否正确
+   - 验证音频数据完整性
+   - 确认数据编码格式
+
+**解决步骤**:
+1. 确保按正确顺序调用方法：`loadCharacter` → `start` → `sendAudioData`
+2. 检查所有状态回调，确认各个阶段都成功
+3. 验证音频数据的格式和内容
+
+</Accordion>
+
+<Accordion title="应用崩溃或卡顿">
+
+**问题描述**: 使用插件时应用出现崩溃或严重卡顿。
+
+**常见原因**:
+- 内存不足
+- 资源未正确释放
+- 多线程操作冲突
+- 设备性能不足
+
+**解决方案**:
+1. **正确的资源管理**
+   ```dart
+   @override
+   void dispose() {
+     // 必须在销毁前关闭
+     _characterController.close();
+     super.dispose();
+   }
+   ```
+
+2. **内存优化**
+   - 及时释放不用的资源
+   - 避免内存泄漏
+   - 监控内存使用情况
+
+3. **设备兼容性检查**
+   - 确认设备满足最低要求
+   - 检查可用内存和存储空间
+   - 验证 Metal 支持情况
+
+**预防措施**:
+- 在低端设备上降低渲染质量
+- 实现适当的错误处理机制
+- 定期测试内存使用情况
+
+</Accordion>
+</AccordionGroup>
+
+## 开发和调试问题
+
+<AccordionGroup>
+<Accordion title="状态回调不触发">
+
+**问题描述**: 设置的状态回调函数没有被调用。
+
+**检查要点**:
+1. **回调函数设置**
+   ```dart
+   // 确保正确设置回调
+   CharacterWidget.createWithController(
+     key: _characterKey,
+     sessionToken: 'token',
+     loadStateChanged: (state) {
+       print('这个回调应该被触发: $state');
+     },
+   )
+   ```
+
+2. **Widget 生命周期**
+   - 确认 Widget 已正确创建
+   - 检查 Widget 是否被销毁
+   - 验证 GlobalKey 的使用
+
+3. **异步操作处理**
+   ```dart
+   // 在异步回调中更新 UI
+   loadStateChanged: (state) {
+     if (mounted) {
+       setState(() {
+         _currentState = state;
+       });
+     }
+   }
+   ```
+
+**解决方法**:
+- 检查回调函数的实现
+- 确认 Widget 的生命周期管理
+- 添加调试日志验证回调触发
+
+</Accordion>
+
+<Accordion title="控制器获取失败">
+
+**问题描述**: 无法通过 GlobalKey 获取 CharacterController。
+
+**错误信息**:
+```dart
+// currentState 返回 null
+final controller = _characterKey.currentState?.controller;
+```
+
+**解决方案**:
+1. **确保 Widget 已构建完成**
+   ```dart
+   // 在适当的时机获取控制器
+   loadStateChanged: (state) {
+     if (state == CharacterLoadState.completed) {
+       _characterController = _characterKey.currentState!.controller;
+     }
+   }
+   ```
+
+2. **检查 GlobalKey 的使用**
+   ```dart
+   // 确保 GlobalKey 正确关联
+   final GlobalKey<State<CharacterWidget>> _characterKey =
+       GlobalKey<State<CharacterWidget>>();
+   
+   CharacterWidget.createWithController(
+     key: _characterKey, // 必须设置
+     // ...
+   )
+   ```
+
+3. **添加空值检查**
+   ```dart
+   void _useController() {
+     final controller = _characterKey.currentState?.controller;
+     if (controller != null) {
+       controller.start();
+     } else {
+       print('控制器尚未准备好');
+     }
+   }
+   ```
+
+</Accordion>
+
+<Accordion title="调试信息不显示">
+
+**问题描述**: 无法看到插件的调试输出信息。
+
+**解决方案**:
+1. **启用调试模式**
+   ```bash
+   # 使用调试模式运行
+   flutter run --debug
+   ```
+
+2. **添加详细日志**
+   ```dart
+   // 在所有回调中添加日志
+   setUpStateChanged: (state) {
+     debugPrint('SDK设置状态: $state');
+   },
+   loadStateChanged: (state) {
+     debugPrint('加载状态: $state');
+   },
+   connectionStateChanged: (state) {
+     debugPrint('连接状态: $state');
+   },
+   ```
+
+3. **检查日志过滤**
+   - 确认 IDE 的日志过滤设置
+   - 检查日志级别配置
+   - 使用 `print` 而不是 `debugPrint` 进行测试
+
+</Accordion>
+</AccordionGroup>
+
+## 性能和优化问题
+
+<AccordionGroup>
+<Accordion title="渲染性能差">
+
+**问题描述**: 数字人渲染帧率低或卡顿。
+
+**优化建议**:
+1. **设备性能检查**
+   - 确认设备满足最低要求
+   - 检查可用内存
+   - 验证 GPU 性能
+
+2. **渲染设置优化**
+   ```dart
+   // 根据设备性能调整渲染质量
+   // 注意：具体API需要参考最新文档
+   ```
+
+3. **资源管理**
+   - 及时释放不用的资源
+   - 避免同时加载多个数字人
+   - 优化内存使用
+
+**监控方法**:
+```dart
+// 监控性能指标
+playerStateChanged: (state) {
+  if (state == CharacterPlayerState.playing) {
+    // 记录播放开始时间
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="内存使用过高">
+
+**问题描述**: 应用内存占用持续增长。
+
+**排查步骤**:
+1. **检查资源释放**
+   ```dart
+   @override
+   void dispose() {
+     // 确保正确释放资源
+     _characterController.close();
+     super.dispose();
+   }
+   ```
+
+2. **监控内存使用**
+   - 使用 Flutter Inspector 监控内存
+   - 检查是否存在内存泄漏
+   - 分析内存增长趋势
+
+3. **优化策略**
+   - 避免重复加载相同资源
+   - 实现资源缓存机制
+   - 及时清理临时数据
+
+</Accordion>
+</AccordionGroup>
+
+## 错误代码参考
+
+### 常见错误及解决方案
+
+<AccordionGroup>
+<Accordion title="sdkNotVerified - SDK 未验证">
+
+**原因**: 认证令牌无效或过期
+
+**解决方案**:
+- 检查 sessionToken 是否正确
+- 验证令牌是否过期
+- 联系管理员获取新的认证令牌
+
+</Accordion>
+
+<Accordion title="characterIdWrong - 数字人 ID 错误">
+
+**原因**: 提供的数字人 ID 不存在或无效
+
+**解决方案**:
+- 确认数字人 ID 拼写正确
+- 检查数字人是否已发布
+- 验证账户是否有权限访问该数字人
+
+</Accordion>
+
+<Accordion title="serviceError - 服务器错误">
+
+**原因**: 后端服务出现问题
+
+**解决方案**:
+- 检查网络连接
+- 稍后重试
+- 联系技术支持
+
+</Accordion>
+
+<Accordion title="requestTimeout - 请求超时">
+
+**原因**: 网络请求超时
+
+**解决方案**:
+- 检查网络连接稳定性
+- 尝试切换网络环境
+- 增加请求超时时间（如果支持）
+
+</Accordion>
+</AccordionGroup>
+
+## 获取帮助
+
+如果以上解决方案无法解决您的问题，请：
+
+1. **收集错误信息**
+   - 完整的错误日志
+   - 复现步骤
+   - 设备和环境信息
+
+2. **联系技术支持**
+   - 邮箱：support@example.com
+   - 提供详细的问题描述
+   - 附上相关的代码片段
+
+3. **查看其他资源**
+   - [最佳实践](/flutter-plugin/best-practices)
+   - [API 参考](/flutter-plugin/api-reference)
+   - [快速开始](/flutter-plugin/quickstart)
+
+<Tip>
+在寻求帮助时，请提供尽可能详细的信息，包括 Flutter 版本、设备型号、iOS 版本等，这将有助于快速定位和解决问题。
+</Tip>

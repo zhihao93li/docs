@@ -1,0 +1,278 @@
+---
+title: "快速开始"
+description: "5 分钟快速集成 SPAvatarKit Flutter 插件"
+---
+
+## 环境要求
+
+在开始之前，请确保您的开发环境满足以下要求：
+
+### Flutter 环境
+- **Flutter SDK**: 3.3.0 或更高版本
+- **Dart SDK**: 3.8.1 或更高版本
+- **开发工具**: VS Code、Android Studio 或 IntelliJ IDEA
+
+### iOS 平台要求
+- **iOS 版本**: iOS 18.0 或更高版本
+- **Xcode**: 最新稳定版本
+- **设备**: 支持 Metal 的 iOS 设备（iPhone 12 及以上推荐）
+
+<Warning>
+当前版本仅支持 iOS 平台，请确保在 iOS 设备或模拟器上测试。
+</Warning>
+
+## 安装步骤
+
+<Steps>
+<Step title="获取插件包">
+  从官方渠道获取 `sp_character_plugin` 插件包文件。
+  
+  <Note>
+  当前仅支持离线安装模式，未来将支持 pub.dev 在线安装。
+  </Note>
+</Step>
+
+<Step title="放置插件文件">
+  将 `sp_character_plugin` 文件夹放置到您的 Flutter 项目目录中。
+  
+  推荐的目录结构：
+  ```
+  your_project/
+  ├── flutter_app/          # 您的 Flutter 项目
+  └── sp_character_plugin/   # 插件文件夹
+  ```
+  
+  <Tip>
+  建议将插件放在项目同级目录，便于管理和版本控制。
+  </Tip>
+</Step>
+
+<Step title="配置依赖">
+  在您的 Flutter 项目的 `pubspec.yaml` 文件中添加本地依赖：
+  
+  ```yaml title="pubspec.yaml"
+  dependencies:
+    flutter:
+      sdk: flutter
+    
+    # SPAvatarKit Flutter 插件
+    sp_character_plugin:
+      path: ../sp_character_plugin  # 根据实际路径调整
+  ```
+  
+  <Warning>
+  请根据插件的实际放置位置调整路径。
+  </Warning>
+</Step>
+
+<Step title="安装依赖">
+  在项目根目录运行以下命令安装依赖：
+  
+  ```bash
+  flutter pub get
+  ```
+  
+  <Check>
+  如果安装成功，您应该在终端看到 "Running Pub get..." 和 "Got dependencies!" 的提示。
+  </Check>
+</Step>
+</Steps>
+
+## 基础集成
+
+<Steps>
+<Step title="导入插件">
+  在需要使用数字人功能的 Dart 文件中导入插件：
+  
+  ```dart title="main.dart"
+  import 'package:sp_character_plugin/character_widget.dart';
+  ```
+</Step>
+
+<Step title="创建控制器">
+  创建 `CharacterController` 来管理数字人的生命周期：
+  
+  ```dart title="character_page.dart"
+  class CharacterPage extends StatefulWidget {
+    @override
+    _CharacterPageState createState() => _CharacterPageState();
+  }
+  
+  class _CharacterPageState extends State<CharacterPage> {
+    final GlobalKey<State<CharacterWidget>> _characterKey =
+        GlobalKey<State<CharacterWidget>>();
+    late final CharacterController _characterController;
+    
+    @override
+    void initState() {
+      super.initState();
+      // 控制器将在 CharacterWidget 创建时自动初始化
+    }
+  }
+  ```
+</Step>
+
+<Step title="创建数字人视图">
+  使用 `CharacterWidget` 创建数字人渲染视图：
+  
+  ```dart title="character_page.dart"
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('数字人演示')),
+      body: Column(
+        children: [
+          // 数字人渲染视图
+          Expanded(
+            child: CharacterWidget.createWithController(
+              key: _characterKey,
+              sessionToken: 'YOUR_SESSION_TOKEN', // 替换为实际的认证令牌
+              
+              // SDK 设置状态回调
+              setUpStateChanged: (state) {
+                print('SDK 设置状态: $state');
+              },
+              
+              // 数字人加载状态回调
+              loadStateChanged: (state) {
+                print('加载状态: $state');
+                if (state == CharacterLoadState.completed) {
+                  // 数字人加载完成，可以开始对话
+                  _characterController.start();
+                }
+              },
+              
+              // 连接状态回调
+              connectionStateChanged: (state) {
+                print('连接状态: $state');
+              },
+              
+              // 对话状态回调
+              conversationStateChanged: (state) {
+                print('对话状态: $state');
+              },
+              
+              // 播放器状态回调
+              playerStateChanged: (state) {
+                print('播放器状态: $state');
+              },
+              
+              // 错误回调
+              didEncounteredPlayerError: (error) {
+                print('播放器错误: $error');
+              },
+            ),
+          ),
+          
+          // 控制按钮
+          _buildControlButtons(),
+        ],
+      ),
+    );
+  }
+  ```
+</Step>
+
+<Step title="添加控制功能">
+  实现基本的控制功能：
+  
+  ```dart title="character_page.dart"
+  Widget _buildControlButtons() {
+    return Padding(
+      padding: EdgeInsets.all(16.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          ElevatedButton(
+            onPressed: () {
+              // 加载数字人
+              _characterController.loadCharacter('YOUR_CHARACTER_ID');
+            },
+            child: Text('加载数字人'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // 开始对话
+              _characterController.start();
+            },
+            child: Text('开始对话'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              // 关闭对话
+              _characterController.close();
+            },
+            child: Text('关闭对话'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  @override
+  void dispose() {
+    // 清理资源
+    _characterController.close();
+    super.dispose();
+  }
+  ```
+  
+  <Check>
+  现在您可以运行应用并测试基本的数字人功能了。
+  </Check>
+</Step>
+</Steps>
+
+## 验证集成
+
+### 运行应用
+
+```bash
+# 在 iOS 设备或模拟器上运行
+flutter run
+```
+
+### 检查功能
+
+1. **应用启动**: 确认应用能正常启动且无崩溃
+2. **数字人加载**: 点击"加载数字人"按钮，观察加载状态
+3. **渲染显示**: 数字人模型应该正确显示在界面上
+4. **状态回调**: 检查控制台输出的状态信息
+
+<Warning>
+如果遇到问题，请检查：
+- iOS 版本是否满足要求（iOS 18.0+）
+- 认证令牌是否正确
+- 数字人 ID 是否有效
+- 网络连接是否正常
+</Warning>
+
+## 下一步
+
+集成完成后，您可以：
+
+<CardGroup cols={2}>
+<Card title="API 参考" icon="code" href="/flutter-plugin/api-reference">
+  了解完整的 API 接口和高级功能。
+</Card>
+
+<Card title="最佳实践" icon="lightbulb" href="/flutter-plugin/best-practices">
+  学习性能优化和开发建议。
+</Card>
+
+<Card title="音频集成" icon="microphone" href="/flutter-plugin/audio-integration">
+  集成音频输入功能，实现语音驱动。
+</Card>
+
+<Card title="故障排除" icon="wrench" href="/flutter-plugin/faq">
+  解决常见的集成和运行问题。
+</Card>
+</CardGroup>
+
+## 获取帮助
+
+如果您在集成过程中遇到问题：
+
+- 查看 [常见问题](/flutter-plugin/faq) 页面
+- 检查 [最佳实践](/flutter-plugin/best-practices) 指南
+- 联系技术支持：support@example.com

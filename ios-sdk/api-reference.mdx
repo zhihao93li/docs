@@ -95,6 +95,23 @@ public struct AvatarConfig {
         appSecret: String, 
         environment: Environment = .production
     )
+    
+    // 完整初始化方法
+    init(
+        appId: String,
+        appSecret: String,
+        environment: Environment,
+        endpoint: URL? = nil,
+        timeout: TimeInterval = 30.0,
+        cacheSize: Int = 100 * 1024 * 1024 // 100MB
+    ) {
+        self.appId = appId
+        self.appSecret = appSecret
+        self.environment = environment
+        self.endpoint = endpoint
+        self.timeout = timeout
+        self.cacheSize = cacheSize
+    }
 }
 ```
 
@@ -226,69 +243,149 @@ public enum AvatarError: Error, LocalizedError {
 
 ### 基础初始化
 
-```swift
-// 创建配置
-let config = AvatarConfig(
-    appId: "your_app_id",
-    appSecret: "your_app_secret",
-    environment: .production
-)
+<Steps>
+<Step title="创建配置">
+  ```swift
+  let config = AvatarConfig(
+      appId: "your_app_id",
+      appSecret: "your_app_secret",
+      environment: .production
+  )
+  ```
+  
+  <Tip>
+  在生产环境中，请确保 `appId` 和 `appSecret` 从安全的配置文件中读取，而不是硬编码在代码中。
+  </Tip>
+</Step>
 
-// 初始化 SDK
-AvatarSDK.initialize(with: config) { result in
-    switch result {
-    case .success:
-        print("SDK 初始化成功")
-    case .failure(let error):
-        print("SDK 初始化失败: \(error)")
+<Step title="初始化 SDK">
+  ```swift
+  AvatarSDK.initialize(with: config) { result in
+      switch result {
+      case .success:
+          print("SDK 初始化成功")
+          // 可以开始使用 SDK 功能
+      case .failure(let error):
+          print("SDK 初始化失败: \(error)")
+          // 处理初始化错误
+      }
+  }
+  ```
+  
+  <Check>
+  初始化成功后，`AvatarSDK.isInitialized` 将返回 `true`。
+  </Check>
+</Step>
+</Steps>
+
+### 创建和配置渲染器
+
+<Steps>
+<Step title="创建渲染器实例">
+  ```swift
+  class ViewController: UIViewController {
+      private var renderer: AvatarRenderer!
+      
+      override func viewDidLoad() {
+          super.viewDidLoad()
+          setupRenderer()
+      }
+      
+      private func setupRenderer() {
+          renderer = AvatarRenderer(frame: CGRect(x: 0, y: 0, width: 300, height: 400))
+          renderer.delegate = self
+          renderer.quality = .medium // 设置渲染质量
+          view.addSubview(renderer)
+      }
+  }
+  ```
+</Step>
+
+<Step title="加载数字人模型">
+  ```swift
+  private func loadAvatar() {
+      guard let modelURL = URL(string: "https://cdn.example.com/avatar.avatar") else {
+          print("无效的模型 URL")
+          return
+      }
+      
+      do {
+          try renderer.load(model: modelURL)
+          renderer.start()
+      } catch {
+          print("模型加载失败: \(error)")
+      }
+  }
+  ```
+  
+  <Warning>
+  确保模型 URL 有效且网络连接正常。建议在加载前检查网络状态。
+  </Warning>
+</Step>
+</Steps>
+
+### 音频处理
+
+```swift title="音频应用示例"
+private func applyAudioToAvatar() {
+    guard let audioURL = URL(string: "https://cdn.example.com/audio.wav") else {
+        print("无效的音频 URL")
+        return
     }
-}
-```
-
-### 创建渲染器
-
-```swift
-// 创建渲染器
-let renderer = AvatarRenderer(frame: CGRect(x: 0, y: 0, width: 300, height: 400))
-renderer.delegate = self
-view.addSubview(renderer)
-
-// 加载模型
-do {
-    let modelURL = URL(string: "https://cdn.example.com/avatar.avatar")!
-    try renderer.load(model: modelURL)
-    renderer.start()
-} catch {
-    print("模型加载失败: \(error)")
-}
-```
-
-### 应用音频
-
-```swift
-// 应用音频文件
-do {
-    let audioURL = URL(string: "https://cdn.example.com/audio.wav")!
-    try renderer.apply(audio: audioURL)
-} catch {
-    print("音频应用失败: \(error)")
+    
+    do {
+        try renderer.apply(audio: audioURL)
+        print("音频应用成功")
+    } catch {
+        print("音频应用失败: \(error)")
+    }
 }
 ```
 
 ### 实现代理方法
 
-```swift
+```swift title="AvatarRendererDelegate 实现"
 extension ViewController: AvatarRendererDelegate {
     func rendererDidStart(_ renderer: AvatarRenderer) {
         print("渲染开始")
+        DispatchQueue.main.async {
+            // 更新 UI，例如隐藏加载指示器
+        }
+    }
+    
+    func rendererDidStop(_ renderer: AvatarRenderer) {
+        print("渲染停止")
     }
     
     func renderer(_ renderer: AvatarRenderer, didFail error: AvatarError) {
         print("渲染错误: \(error)")
+        DispatchQueue.main.async {
+            // 显示错误提示
+            self.showErrorAlert(error: error)
+        }
     }
     
     func renderer(_ renderer: AvatarRenderer, didUpdateFPS fps: Double) {
         print("当前帧率: \(fps)")
+        // 可以用于性能监控
+    }
+    
+    func renderer(_ renderer: AvatarRenderer, didLoadModel url: URL) {
+        print("模型加载完成: \(url)")
+    }
+    
+    func renderer(_ renderer: AvatarRenderer, didApplyAudio url: URL) {
+        print("音频应用完成: \(url)")
+    }
+    
+    private func showErrorAlert(error: AvatarError) {
+        let alert = UIAlertController(
+            title: "错误",
+            message: error.localizedDescription,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        present(alert, animated: true)
     }
 }
 ```
@@ -314,4 +411,4 @@ extension ViewController: AvatarRendererDelegate {
 
 - SDK 会自动管理内部资源
 - 在 `deinit` 中调用 `cleanup()` 清理资源
-- 避免循环引用，使用 `weak` 引用代理对象 
+- 避免循环引用，使用 `weak` 引用代理对象

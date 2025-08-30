@@ -1,0 +1,518 @@
+---
+title: "API 参考"
+description: "SPAvatarKit Flutter 插件完整的 API 文档"
+---
+
+## 核心组件
+
+### CharacterWidget
+
+数字人渲染的主要 Widget 组件，负责显示和管理数字人视图。
+
+#### 构造方法
+
+<ParamField path="createWithController" type="factory" required>
+创建带有控制器的数字人 Widget 实例。
+</ParamField>
+
+#### 参数说明
+
+<ParamField path="key" type="GlobalKey<State<CharacterWidget>>" required>
+Widget 的全局键，用于获取控制器实例。
+</ParamField>
+
+<ParamField path="sessionToken" type="string" required>
+用户认证令牌，用于验证 SDK 使用权限。
+</ParamField>
+
+<ParamField path="setUpStateChanged" type="CharacterSetUpStateChangedCallback" optional>
+SDK 设置状态变更回调函数。
+</ParamField>
+
+<ParamField path="loadStateChanged" type="CharacterLoadStateChangedCallback" optional>
+数字人加载状态变更回调函数。
+</ParamField>
+
+<ParamField path="connectionStateChanged" type="CharacterConnectionStateChangedCallback" optional>
+服务连接状态变更回调函数。
+</ParamField>
+
+<ParamField path="conversationStateChanged" type="CharacterConversationStateChangedCallback" optional>
+对话状态变更回调函数。
+</ParamField>
+
+<ParamField path="playerStateChanged" type="CharacterPlayerStateChangedCallback" optional>
+播放器状态变更回调函数。
+</ParamField>
+
+<ParamField path="didEncounteredPlayerError" type="CharacterPlayerErrorCallback" optional>
+播放器错误回调函数。
+</ParamField>
+
+#### 使用示例
+
+<CodeGroup>
+```dart 基础用法
+CharacterWidget.createWithController(
+  key: _characterKey,
+  sessionToken: 'your_session_token',
+  loadStateChanged: (state) {
+    print('加载状态: $state');
+  },
+)
+```
+
+```dart 完整配置
+CharacterWidget.createWithController(
+  key: _characterKey,
+  sessionToken: 'your_session_token',
+  setUpStateChanged: (state) => _handleSetUpState(state),
+  loadStateChanged: (state) => _handleLoadState(state),
+  connectionStateChanged: (state) => _handleConnectionState(state),
+  conversationStateChanged: (state) => _handleConversationState(state),
+  playerStateChanged: (state) => _handlePlayerState(state),
+  didEncounteredPlayerError: (error) => _handlePlayerError(error),
+)
+```
+</CodeGroup>
+
+### CharacterController
+
+数字人控制器，提供数字人的生命周期管理和交互功能。
+
+#### 获取控制器实例
+
+```dart
+// 通过 CharacterWidget 的 key 获取控制器
+final controller = _characterKey.currentState?.controller;
+```
+
+#### 核心方法
+
+<ParamField path="loadCharacter" type="void Function(String characterId)" required>
+加载指定 ID 的数字人模型。
+
+**参数:**
+- `characterId`: 数字人的唯一标识符
+
+**示例:**
+```dart
+_characterController.loadCharacter('character_001');
+```
+</ParamField>
+
+<ParamField path="start" type="void Function()" required>
+开始连接服务并启动对话功能。必须在数字人加载完成后调用。
+
+**示例:**
+```dart
+// 在 loadStateChanged 回调中调用
+if (state == CharacterLoadState.completed) {
+  _characterController.start();
+}
+```
+</ParamField>
+
+<ParamField path="close" type="void Function()" required>
+关闭服务连接并停止对话功能。
+
+**示例:**
+```dart
+@override
+void dispose() {
+  _characterController.close();
+  super.dispose();
+}
+```
+</ParamField>
+
+<ParamField path="interrupt" type="void Function()" required>
+打断当前正在进行的对话或播放。
+
+**示例:**
+```dart
+_characterController.interrupt();
+```
+</ParamField>
+
+<ParamField path="sendAudioData" type="void Function(String audioData)" required>
+发送音频数据给数字人进行处理和响应。
+
+**参数:**
+- `audioData`: 音频数据（具体格式需要参考音频集成文档）
+
+**示例:**
+```dart
+_characterController.sendAudioData(audioDataString);
+```
+</ParamField>
+
+## 状态枚举
+
+### CharacterLoadState
+
+数字人加载状态枚举。
+
+<ResponseField name="preparing" type="enum">
+准备中 - 正在初始化加载流程。
+</ResponseField>
+
+<ResponseField name="downloading" type="enum">
+正在下载 - 正在从服务器下载数字人资源。
+</ResponseField>
+
+<ResponseField name="extracting" type="enum">
+正在解压 - 正在解压下载的资源文件。
+</ResponseField>
+
+<ResponseField name="completed" type="enum">
+已完成 - 数字人加载完成，可以开始使用。
+</ResponseField>
+
+<ResponseField name="failed" type="enum">
+加载失败 - 加载过程中出现错误。
+</ResponseField>
+
+<ResponseField name="versionIncompatibility" type="enum">
+版本不兼容 - 数字人版本与 SDK 版本不兼容。
+</ResponseField>
+
+### CharacterConnectionState
+
+服务连接状态枚举。
+
+<ResponseField name="disconnected" type="enum">
+未连接 - 尚未建立服务连接。
+</ResponseField>
+
+<ResponseField name="connecting" type="enum">
+连接中 - 正在尝试连接服务。
+</ResponseField>
+
+<ResponseField name="connected" type="enum">
+已连接 - 服务连接已建立。
+</ResponseField>
+
+<ResponseField name="error" type="enum">
+遇到错误 - 连接过程中出现错误。
+</ResponseField>
+
+### CharacterConversationState
+
+对话状态枚举。
+
+<ResponseField name="idle" type="enum">
+无对话 - 数字人处于呼吸态，等待交互。
+</ResponseField>
+
+<ResponseField name="starting" type="enum">
+正在启动对话 - 连接服务和启动相关引擎阶段。
+</ResponseField>
+
+<ResponseField name="active" type="enum">
+服务和引擎已就绪 - 可随时进行对话交互。
+</ResponseField>
+
+<ResponseField name="closing" type="enum">
+正在关闭对话 - 断开服务和关闭相关引擎阶段。
+</ResponseField>
+
+### CharacterPlayerState
+
+播放器状态枚举。
+
+<ResponseField name="idle" type="enum">
+闲置中 - 播放器未在播放任何内容。
+</ResponseField>
+
+<ResponseField name="playing" type="enum">
+正在播放 - 播放器正在播放音频或动画。
+</ResponseField>
+
+### CharacterPlayerError
+
+播放器错误类型枚举。
+
+<ResponseField name="sdkNotVerified" type="enum">
+SDK 未验证 - 认证令牌无效或过期。
+</ResponseField>
+
+<ResponseField name="characterIdWrong" type="enum">
+数字人 ID 错误 - 提供的数字人 ID 不存在或无效。
+</ResponseField>
+
+<ResponseField name="characterAssetsMissing" type="enum">
+数字人资源缺失 - 数字人相关资源文件丢失或损坏。
+</ResponseField>
+
+<ResponseField name="characterCameraSettingsWrong" type="enum">
+数字人相机设置有问题 - 渲染相机配置错误。
+</ResponseField>
+
+<ResponseField name="serviceError" type="enum">
+服务器错误 - 后端服务出现问题。
+</ResponseField>
+
+<ResponseField name="activeAudioSessionFailed" type="enum">
+激活 AudioSession 失败 - 音频会话初始化失败。
+</ResponseField>
+
+<ResponseField name="startAudioEngineFailed" type="enum">
+启动 AudioEngine 失败 - 音频引擎启动失败。
+</ResponseField>
+
+<ResponseField name="sendDataWrong" type="enum">
+发送的数据有问题 - 音频数据格式错误或损坏。
+</ResponseField>
+
+<ResponseField name="requestTimeout" type="enum">
+请求超时 - 网络请求超时。
+</ResponseField>
+
+## 回调函数类型
+
+### 状态回调
+
+```dart
+// SDK 设置状态回调
+typedef CharacterSetUpStateChangedCallback = void Function(CharacterSetUpState state);
+
+// 加载状态回调
+typedef CharacterLoadStateChangedCallback = void Function(CharacterLoadState state);
+
+// 连接状态回调
+typedef CharacterConnectionStateChangedCallback = void Function(CharacterConnectionState state);
+
+// 对话状态回调
+typedef CharacterConversationStateChangedCallback = void Function(CharacterConversationState state);
+
+// 播放器状态回调
+typedef CharacterPlayerStateChangedCallback = void Function(CharacterPlayerState state);
+
+// 播放器错误回调
+typedef CharacterPlayerErrorCallback = void Function(CharacterPlayerError error);
+```
+
+## 完整使用示例
+
+<CodeGroup>
+```dart 基础集成
+class CharacterDemo extends StatefulWidget {
+  @override
+  _CharacterDemoState createState() => _CharacterDemoState();
+}
+
+class _CharacterDemoState extends State<CharacterDemo> {
+  final GlobalKey<State<CharacterWidget>> _characterKey =
+      GlobalKey<State<CharacterWidget>>();
+  late final CharacterController _characterController;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: CharacterWidget.createWithController(
+        key: _characterKey,
+        sessionToken: 'your_session_token',
+        loadStateChanged: _handleLoadState,
+        connectionStateChanged: _handleConnectionState,
+        didEncounteredPlayerError: _handleError,
+      ),
+    );
+  }
+  
+  void _handleLoadState(CharacterLoadState state) {
+    if (state == CharacterLoadState.completed) {
+      _characterController = _characterKey.currentState!.controller;
+      _characterController.start();
+    }
+  }
+  
+  void _handleConnectionState(CharacterConnectionState state) {
+    print('连接状态: $state');
+  }
+  
+  void _handleError(CharacterPlayerError error) {
+    print('错误: $error');
+  }
+  
+  @override
+  void dispose() {
+    _characterController.close();
+    super.dispose();
+  }
+}
+```
+
+```dart 高级用法
+class AdvancedCharacterDemo extends StatefulWidget {
+  @override
+  _AdvancedCharacterDemoState createState() => _AdvancedCharacterDemoState();
+}
+
+class _AdvancedCharacterDemoState extends State<AdvancedCharacterDemo> {
+  final GlobalKey<State<CharacterWidget>> _characterKey =
+      GlobalKey<State<CharacterWidget>>();
+  late final CharacterController _characterController;
+  
+  CharacterLoadState _loadState = CharacterLoadState.preparing;
+  CharacterConnectionState _connectionState = CharacterConnectionState.disconnected;
+  CharacterConversationState _conversationState = CharacterConversationState.idle;
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('数字人演示'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: _reloadCharacter,
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          _buildStatusPanel(),
+          Expanded(
+            child: CharacterWidget.createWithController(
+              key: _characterKey,
+              sessionToken: 'your_session_token',
+              setUpStateChanged: _handleSetUpState,
+              loadStateChanged: _handleLoadState,
+              connectionStateChanged: _handleConnectionState,
+              conversationStateChanged: _handleConversationState,
+              playerStateChanged: _handlePlayerState,
+              didEncounteredPlayerError: _handlePlayerError,
+            ),
+          ),
+          _buildControlPanel(),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildStatusPanel() {
+    return Container(
+      padding: EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Text('加载状态: $_loadState'),
+          Text('连接状态: $_connectionState'),
+          Text('对话状态: $_conversationState'),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildControlPanel() {
+    return Container(
+      padding: EdgeInsets.all(16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          ElevatedButton(
+            onPressed: _loadCharacter,
+            child: Text('加载数字人'),
+          ),
+          ElevatedButton(
+            onPressed: _startConversation,
+            child: Text('开始对话'),
+          ),
+          ElevatedButton(
+            onPressed: _interruptConversation,
+            child: Text('打断对话'),
+          ),
+          ElevatedButton(
+            onPressed: _closeConversation,
+            child: Text('关闭对话'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _handleSetUpState(CharacterSetUpState state) {
+    print('SDK 设置状态: $state');
+  }
+  
+  void _handleLoadState(CharacterLoadState state) {
+    setState(() {
+      _loadState = state;
+    });
+    
+    if (state == CharacterLoadState.completed) {
+      _characterController = _characterKey.currentState!.controller;
+    }
+  }
+  
+  void _handleConnectionState(CharacterConnectionState state) {
+    setState(() {
+      _connectionState = state;
+    });
+  }
+  
+  void _handleConversationState(CharacterConversationState state) {
+    setState(() {
+      _conversationState = state;
+    });
+  }
+  
+  void _handlePlayerState(CharacterPlayerState state) {
+    print('播放器状态: $state');
+  }
+  
+  void _handlePlayerError(CharacterPlayerError error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('播放器错误: $error')),
+    );
+  }
+  
+  void _loadCharacter() {
+    _characterController.loadCharacter('your_character_id');
+  }
+  
+  void _startConversation() {
+    if (_loadState == CharacterLoadState.completed) {
+      _characterController.start();
+    }
+  }
+  
+  void _interruptConversation() {
+    _characterController.interrupt();
+  }
+  
+  void _closeConversation() {
+    _characterController.close();
+  }
+  
+  void _reloadCharacter() {
+    _characterController.close();
+    Future.delayed(Duration(milliseconds: 500), () {
+      _loadCharacter();
+    });
+  }
+  
+  @override
+  void dispose() {
+    _characterController.close();
+    super.dispose();
+  }
+}
+```
+</CodeGroup>
+
+## 注意事项
+
+<Warning>
+**重要提醒**
+- 必须在数字人加载完成（`CharacterLoadState.completed`）后才能调用 `start()` 方法
+- 在 Widget 销毁时务必调用 `close()` 方法释放资源
+- 认证令牌必须有效，否则会导致 SDK 验证失败
+</Warning>
+
+<Tip>
+**最佳实践**
+- 建议在状态回调中处理 UI 更新和错误提示
+- 使用适当的错误处理机制处理各种异常情况
+- 在生产环境中应该对敏感信息（如认证令牌）进行安全处理
+</Tip>

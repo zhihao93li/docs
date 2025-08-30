@@ -7,9 +7,13 @@ description: "SPAvatarKit SDK 性能优化和开发建议"
 
 ### 内存管理
 
-正确的内存管理对于数字人渲染至关重要。
+<Warning>
+正确的内存管理对于数字人渲染至关重要，不当的内存使用可能导致应用崩溃或性能问题。
+</Warning>
 
-```swift
+#### 生命周期管理
+
+```swift title="正确的生命周期管理"
 class AvatarViewController: UIViewController {
     private var renderer: AvatarRenderer?
     
@@ -20,79 +24,325 @@ class AvatarViewController: UIViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        // 页面即将显示时启动渲染
         renderer?.start()
     }
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        // 页面即将隐藏时停止渲染以节省资源
         renderer?.stop()
     }
     
     deinit {
+        // 确保在对象销毁时清理资源
         renderer?.stop()
         renderer = nil
+        print("AvatarViewController 已释放")
+    }
+    
+    private func setupRenderer() {
+        renderer = AvatarRenderer(frame: view.bounds)
+        renderer?.delegate = self
+        view.addSubview(renderer!)
     }
 }
 ```
 
+<Check>
+遵循这种模式可以确保渲染器在适当的时机启动和停止，避免不必要的资源消耗。
+</Check>
+
 ### 资源预加载
 
-预加载常用模型可以提升用户体验。
+<Tip>
+预加载常用模型可以显著提升用户体验，减少首次加载时间。
+</Tip>
 
-```swift
-// 预加载常用模型
-func preloadModels() {
-    let modelURLs = [
-        URL(string: "https://cdn.example.com/model1.avatar")!,
-        URL(string: "https://cdn.example.com/model2.avatar")!
-    ]
+#### 智能预加载策略
+
+```swift title="智能预加载实现"
+class ModelPreloader {
+    private var preloadedModels: Set<URL> = []
+    private let maxConcurrentPreloads = 2
+    private var currentPreloads = 0
     
-    for url in modelURLs {
-        AvatarSDK.preloadModel(url) { result in
-            switch result {
-            case .success:
-                print("模型预加载成功: \(url)")
-            case .failure(let error):
-                print("模型预加载失败: \(error)")
+    func preloadModels() {
+        let modelURLs = [
+            URL(string: "https://cdn.example.com/model1.avatar")!,
+            URL(string: "https://cdn.example.com/model2.avatar")!,
+            URL(string: "https://cdn.example.com/model3.avatar")!
+        ]
+        
+        // 按优先级预加载
+        preloadWithPriority(modelURLs)
+    }
+    
+    private func preloadWithPriority(_ urls: [URL]) {
+        for url in urls {
+            guard !preloadedModels.contains(url),
+                  currentPreloads < maxConcurrentPreloads else {
+                continue
+            }
+            
+            currentPreloads += 1
+            AvatarSDK.preloadModel(url) { [weak self] result in
+                defer { self?.currentPreloads -= 1 }
+                
+                switch result {
+                case .success:
+                    print("模型预加载成功: \(url.lastPathComponent)")
+                    self?.preloadedModels.insert(url)
+                case .failure(let error):
+                    print("模型预加载失败: \(error)")
+                }
             }
         }
+    }
+    
+    func isModelPreloaded(_ url: URL) -> Bool {
+        return preloadedModels.contains(url)
+    }
+}
+```
+
+#### 基于使用频率的预加载
+
+```swift title="基于使用频率的预加载"
+class UsageBasedPreloader {
+    private var modelUsageCount: [URL: Int] = [:]
+    
+    func recordModelUsage(_ url: URL) {
+        modelUsageCount[url, default: 0] += 1
+        
+        // 当使用次数达到阈值时，预加载相关模型
+        if modelUsageCount[url]! >= 3 {
+            preloadRelatedModels(for: url)
+        }
+    }
+    
+    private func preloadRelatedModels(for url: URL) {
+        // 根据业务逻辑预加载相关模型
+        let relatedModels = getRelatedModels(for: url)
+        
+        for relatedModel in relatedModels {
+            AvatarSDK.preloadModel(relatedModel) { result in
+                // 处理预加载结果
+            }
+        }
+    }
+    
+    private func getRelatedModels(for url: URL) -> [URL] {
+        // 实现获取相关模型的逻辑
+        return []
     }
 }
 ```
 
 ### 渲染质量优化
 
-根据设备性能动态调整渲染质量。
+<Info>
+根据设备性能和实时帧率动态调整渲染质量，可以在性能和视觉效果之间找到最佳平衡。
+</Info>
 
-```swift
-func optimizeRenderQuality() {
-    // 检测设备性能
-    let deviceSupportsHighQuality = UIDevice.current.userInterfaceIdiom == .pad || 
-                                   ProcessInfo.processInfo.processorCount >= 6
+#### 设备性能检测
+
+```swift title="设备性能评估"
+class DevicePerformanceAnalyzer {
+    enum PerformanceLevel {
+        case low, medium, high
+    }
     
-    // 设置合适的渲染质量
-    renderer.quality = deviceSupportsHighQuality ? .high : .medium
+    static func analyzePerformance() -> PerformanceLevel {
+        let processorCount = ProcessInfo.processInfo.processorCount
+        let physicalMemory = ProcessInfo.processInfo.physicalMemory
+        let deviceType = UIDevice.current.userInterfaceIdiom
+        
+        // 综合评估设备性能
+        if deviceType == .pad && processorCount >= 8 && physicalMemory >= 4_000_000_000 {
+            return .high
+        } else if processorCount >= 6 && physicalMemory >= 3_000_000_000 {
+            return .medium
+        } else {
+            return .low
+        }
+    }
     
-    // 监控帧率并动态调整
-    renderer.delegate = self
+    static func recommendedQuality() -> RenderQuality {
+        switch analyzePerformance() {
+        case .high:
+            return .high
+        case .medium:
+            return .medium
+        case .low:
+            return .low
+        }
+    }
+}
+```
+
+#### 自适应质量调整
+
+```swift title="自适应质量管理"
+class AdaptiveQualityManager {
+    private var renderer: AvatarRenderer
+    private var fpsHistory: [Double] = []
+    private let maxHistorySize = 10
+    private var lastQualityAdjustment = Date()
+    
+    init(renderer: AvatarRenderer) {
+        self.renderer = renderer
+        setupInitialQuality()
+    }
+    
+    private func setupInitialQuality() {
+        renderer.quality = DevicePerformanceAnalyzer.recommendedQuality()
+    }
+    
+    func handleFPSUpdate(_ fps: Double) {
+        // 记录帧率历史
+        fpsHistory.append(fps)
+        if fpsHistory.count > maxHistorySize {
+            fpsHistory.removeFirst()
+        }
+        
+        // 避免频繁调整
+        guard Date().timeIntervalSince(lastQualityAdjustment) > 2.0 else { return }
+        
+        let averageFPS = fpsHistory.reduce(0, +) / Double(fpsHistory.count)
+        adjustQualityBasedOnFPS(averageFPS)
+    }
+    
+    private func adjustQualityBasedOnFPS(_ averageFPS: Double) {
+        let currentQuality = renderer.quality
+        
+        switch currentQuality {
+        case .high:
+            if averageFPS < 25 {
+                renderer.quality = .medium
+                lastQualityAdjustment = Date()
+                print("降低渲染质量到 medium，当前平均帧率: \(averageFPS)")
+            }
+        case .medium:
+            if averageFPS < 20 {
+                renderer.quality = .low
+                lastQualityAdjustment = Date()
+                print("降低渲染质量到 low，当前平均帧率: \(averageFPS)")
+            } else if averageFPS > 45 {
+                renderer.quality = .high
+                lastQualityAdjustment = Date()
+                print("提升渲染质量到 high，当前平均帧率: \(averageFPS)")
+            }
+        case .low:
+            if averageFPS > 35 {
+                renderer.quality = .medium
+                lastQualityAdjustment = Date()
+                print("提升渲染质量到 medium，当前平均帧率: \(averageFPS)")
+            }
+        }
+    }
 }
 
+// 使用示例
 extension ViewController: AvatarRendererDelegate {
     func renderer(_ renderer: AvatarRenderer, didUpdateFPS fps: Double) {
-        if fps < 20 {
-            // 帧率过低，降低质量
-            renderer.quality = .low
-        } else if fps > 50 && renderer.quality == .low {
-            // 帧率良好，提升质量
-            renderer.quality = .medium
-        }
+        qualityManager.handleFPSUpdate(fps)
     }
 }
 ```
 
 ## 错误处理
 
+<Warning>
+良好的错误处理策略是确保应用稳定性和用户体验的关键。
+</Warning>
+
 ### 优雅降级
+
+当遇到错误时，应该提供优雅的降级方案，确保应用继续可用。
+
+```swift title="错误处理和优雅降级"
+class ErrorHandler {
+    private var fallbackStrategies: [AvatarError: () -> Void] = [:]
+    
+    init() {
+        setupFallbackStrategies()
+    }
+    
+    private func setupFallbackStrategies() {
+        fallbackStrategies[.networkError] = handleNetworkError
+        fallbackStrategies[.modelLoadError] = handleModelLoadError
+        fallbackStrategies[.renderError] = handleRenderError
+    }
+    
+    func handleError(_ error: AvatarError, context: String = "") {
+        // 记录错误日志
+        logError(error, context: context)
+        
+        // 执行对应的降级策略
+        if let strategy = fallbackStrategies[error] {
+            strategy()
+        } else {
+            handleGenericError(error)
+        }
+    }
+    
+    private func handleNetworkError() {
+        // 显示网络错误提示
+        showUserFriendlyAlert(
+            title: "网络连接问题",
+            message: "正在尝试使用离线模式"
+        )
+        
+        // 尝试使用缓存的模型
+        loadCachedModel()
+    }
+    
+    private func handleModelLoadError() {
+        // 显示模型加载错误
+        showUserFriendlyAlert(
+            title: "模型加载失败",
+            message: "正在加载备用模型"
+        )
+        
+        // 回退到默认模型
+        loadDefaultModel()
+    }
+    
+    private func handleRenderError() {
+        // 渲染错误，降低质量重试
+        showUserFriendlyAlert(
+            title: "渲染优化中",
+            message: "正在调整画质以提升性能"
+        )
+        
+        renderer.quality = .low
+        renderer.retry()
+    }
+    
+    private func handleGenericError(_ error: AvatarError) {
+        showUserFriendlyAlert(
+            title: "遇到问题",
+            message: "我们正在努力解决，请稍后重试"
+        )
+    }
+    
+    private func logError(_ error: AvatarError, context: String) {
+        let errorInfo = [
+            "error": error.localizedDescription,
+            "context": context,
+            "timestamp": ISO8601DateFormatter().string(from: Date())
+        ]
+        
+        // 发送到分析服务
+        Analytics.track("avatar_error", properties: errorInfo)
+    }
+}
+```
+
+<Tip>
+为用户提供清晰、友好的错误信息，避免技术术语，并始终提供解决方案或替代方案。
+</Tip>
 
 实现多级降级策略，确保应用稳定性。
 
@@ -125,6 +375,113 @@ class RobustAvatarRenderer {
 
 ### 重试机制
 
+<Info>
+智能重试机制可以有效处理网络波动、临时服务不可用等问题，提升应用的健壮性。
+</Info>
+
+#### 指数退避重试策略
+
+```swift title="智能重试管理器"
+class RetryManager {
+    private let maxRetries: Int
+    private let baseDelay: TimeInterval
+    private let maxDelay: TimeInterval
+    private var retryCount = 0
+    
+    init(maxRetries: Int = 3, baseDelay: TimeInterval = 1.0, maxDelay: TimeInterval = 30.0) {
+        self.maxRetries = maxRetries
+        self.baseDelay = baseDelay
+        self.maxDelay = maxDelay
+    }
+    
+    func executeWithRetry<T>(
+        operation: @escaping () async throws -> T,
+        shouldRetry: @escaping (Error) -> Bool = { _ in true },
+        onSuccess: @escaping (T) -> Void,
+        onFailure: @escaping (Error) -> Void
+    ) {
+        Task {
+            do {
+                let result = try await operation()
+                onSuccess(result)
+                retryCount = 0 // 重置计数
+            } catch {
+                // 检查是否应该重试
+                guard shouldRetry(error) && retryCount < maxRetries else {
+                    onFailure(error)
+                    retryCount = 0
+                    return
+                }
+                
+                retryCount += 1
+                let delay = calculateDelay()
+                
+                print("操作失败，\(delay)秒后进行第\(retryCount)次重试")
+                
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                executeWithRetry(
+                    operation: operation,
+                    shouldRetry: shouldRetry,
+                    onSuccess: onSuccess,
+                    onFailure: onFailure
+                )
+            }
+        }
+    }
+    
+    private func calculateDelay() -> TimeInterval {
+        // 指数退避算法，加入随机抖动
+        let exponentialDelay = baseDelay * pow(2.0, Double(retryCount - 1))
+        let jitter = Double.random(in: 0.1...0.3) * exponentialDelay
+        return min(exponentialDelay + jitter, maxDelay)
+    }
+}
+
+// 使用示例
+class AvatarService {
+    private let retryManager = RetryManager()
+    
+    func loadModel(url: URL) {
+        retryManager.executeWithRetry(
+            operation: {
+                try await self.performModelLoad(url)
+            },
+            shouldRetry: { error in
+                // 只对特定错误进行重试
+                if let avatarError = error as? AvatarError {
+                    switch avatarError {
+                    case .networkError, .serverError:
+                        return true
+                    case .invalidModel, .authenticationError:
+                        return false
+                    default:
+                        return true
+                    }
+                }
+                return true
+            },
+            onSuccess: { model in
+                print("模型加载成功")
+                self.handleModelLoaded(model)
+            },
+            onFailure: { error in
+                print("模型加载最终失败: \(error)")
+                self.handleModelLoadFailure(error)
+            }
+        )
+    }
+    
+    private func performModelLoad(_ url: URL) async throws -> AvatarModel {
+        // 实际的模型加载逻辑
+        return AvatarModel()
+    }
+}
+```
+
+<Check>
+这种重试策略包含了指数退避、随机抖动和条件重试，可以有效避免服务器过载并提高成功率。
+</Check>
+
 实现智能重试机制处理临时性错误。
 
 ```swift
@@ -155,191 +512,1328 @@ func loadModelWithRetry(_ url: URL, maxRetries: Int = 3) {
 
 ## 用户体验
 
+<Info>
+良好的用户体验设计可以显著提升用户满意度和应用的专业度。
+</Info>
+
 ### 加载状态管理
 
-提供清晰的加载反馈，提升用户体验。
+<Tip>
+提供清晰、实时的加载状态反馈，让用户了解当前进度和预期等待时间。
+</Tip>
 
-```swift
+#### 增强的加载视图设计
+
+```swift title="增强的加载状态管理"
 class AvatarView: UIView {
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let renderer = AvatarRenderer()
     private let statusLabel = UILabel()
+    private let progressView = UIProgressView(progressViewStyle: .default)
+    private let timeLabel = UILabel()
+    private var startTime: Date?
     
     override init(frame: CGRect) {
         super.init(frame: frame)
         setupUI()
     }
     
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupUI()
+    }
+    
     private func setupUI() {
+        backgroundColor = UIColor.systemBackground
+        
         // 设置加载指示器
         addSubview(activityIndicator)
-        activityIndicator.center = center
+        activityIndicator.translatesAutoresizingMaskIntoConstraints = false
         activityIndicator.hidesWhenStopped = true
+        activityIndicator.color = .systemBlue
+        
+        // 设置进度条
+        addSubview(progressView)
+        progressView.translatesAutoresizingMaskIntoConstraints = false
+        progressView.progressTintColor = .systemBlue
+        progressView.trackTintColor = .systemGray5
+        progressView.isHidden = true
         
         // 设置状态标签
         addSubview(statusLabel)
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
         statusLabel.textAlignment = .center
-        statusLabel.textColor = .gray
-        statusLabel.frame = CGRect(x: 0, y: bounds.height - 40, width: bounds.width, height: 30)
+        statusLabel.textColor = .label
+        statusLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        statusLabel.numberOfLines = 0
+        
+        // 设置时间标签
+        addSubview(timeLabel)
+        timeLabel.translatesAutoresizingMaskIntoConstraints = false
+        timeLabel.textAlignment = .center
+        timeLabel.textColor = .secondaryLabel
+        timeLabel.font = .systemFont(ofSize: 12)
+        
+        setupConstraints()
+    }
+    
+    private func setupConstraints() {
+        NSLayoutConstraint.activate([
+            activityIndicator.centerXAnchor.constraint(equalTo: centerXAnchor),
+            activityIndicator.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -40),
+            
+            progressView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            progressView.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -20),
+            progressView.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.7),
+            
+            statusLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            statusLabel.topAnchor.constraint(equalTo: activityIndicator.bottomAnchor, constant: 20),
+            statusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 20),
+            statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -20),
+            
+            timeLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            timeLabel.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 8)
+        ])
     }
     
     func loadModel(_ url: URL) {
+        startTime = Date()
         activityIndicator.startAnimating()
-        statusLabel.text = "正在加载模型..."
+        progressView.isHidden = false
+        progressView.progress = 0.0
+        updateStatus("正在连接服务器...", progress: 0.1)
         
         do {
             try renderer.load(model: url)
             renderer.delegate = self
         } catch {
-            activityIndicator.stopAnimating()
-            statusLabel.text = "加载失败"
-            showError(error)
+            handleLoadingError(error)
+        }
+    }
+    
+    private func updateStatus(_ message: String, progress: Float? = nil) {
+        DispatchQueue.main.async {
+            self.statusLabel.text = message
+            
+            if let progress = progress {
+                self.progressView.setProgress(progress, animated: true)
+            }
+            
+            // 更新时间显示
+            if let startTime = self.startTime {
+                let elapsed = Date().timeIntervalSince(startTime)
+                self.timeLabel.text = String(format: "已用时: %.1f秒", elapsed)
+            }
+        }
+    }
+    
+    private func handleLoadingError(_ error: Error) {
+        DispatchQueue.main.async {
+            self.activityIndicator.stopAnimating()
+            self.progressView.isHidden = true
+            self.statusLabel.text = "加载失败"
+            self.statusLabel.textColor = .systemRed
+            self.showError(error)
+        }
+    }
+    
+    private func handleLoadingSuccess() {
+        DispatchQueue.main.async {
+            self.activityIndicator.stopAnimating()
+            self.progressView.progress = 1.0
+            self.statusLabel.text = "加载完成"
+            self.statusLabel.textColor = .systemGreen
+            
+            // 延迟隐藏加载界面
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.hideLoadingUI()
+            }
+        }
+    }
+    
+    private func hideLoadingUI() {
+        UIView.animate(withDuration: 0.3) {
+            self.progressView.alpha = 0
+            self.statusLabel.alpha = 0
+            self.timeLabel.alpha = 0
+        } completion: { _ in
+            self.progressView.isHidden = true
+            self.statusLabel.isHidden = true
+            self.timeLabel.isHidden = true
+        }
+    }
+    
+    private func showError(_ error: Error) {
+        let alert = UIAlertController(
+            title: "加载失败",
+            message: error.localizedDescription,
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "重试", style: .default) { _ in
+            // 重试逻辑
+        })
+        
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        
+        // 获取当前视图控制器并显示警告
+        if let viewController = self.findViewController() {
+            viewController.present(alert, animated: true)
         }
     }
 }
 
 extension AvatarView: AvatarRendererDelegate {
     func renderer(_ renderer: AvatarRenderer, didLoadModel url: URL) {
-        DispatchQueue.main.async {
-            self.activityIndicator.stopAnimating()
-            self.statusLabel.text = "模型加载完成"
+        updateStatus("模型加载完成，正在初始化...", progress: 0.9)
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.handleLoadingSuccess()
             self.renderer.start()
         }
     }
     
-    func renderer(_ renderer: AvatarRenderer, didFail error: AvatarError) {
-        DispatchQueue.main.async {
-            self.activityIndicator.stopAnimating()
-            self.statusLabel.text = "渲染错误"
-            self.showError(error)
+    func renderer(_ renderer: AvatarRenderer, didUpdateProgress progress: Float) {
+        let message: String
+        switch progress {
+        case 0.0..<0.3:
+            message = "正在下载模型数据..."
+        case 0.3..<0.6:
+            message = "正在解析模型文件..."
+        case 0.6..<0.9:
+            message = "正在初始化渲染引擎..."
+        default:
+            message = "即将完成..."
         }
+        
+        updateStatus(message, progress: progress)
+    }
+    
+    func renderer(_ renderer: AvatarRenderer, didFail error: AvatarError) {
+        handleLoadingError(error)
     }
 }
-```
+
+// UIView 扩展，用于查找父视图控制器
+extension UIView {
+    func findViewController() -> UIViewController? {
+        if let nextResponder = self.next as? UIViewController {
+            return nextResponder
+        } else if let nextResponder = self.next as? UIView {
+            return nextResponder.findViewController()
+        } else {
+            return nil
+        }
+    }
+}```
+
+<Check>
+这种设计提供了丰富的视觉反馈，包括进度条、阶段性消息、耗时显示和动画效果，大大提升了用户体验。
+</Check>
 
 ### 网络状态监听
 
-根据网络状态调整策略。
+<Warning>
+网络状态的变化会直接影响数字人模型的加载和渲染质量，需要实时监控并做出相应调整。
+</Warning>
 
-```swift
+#### 智能网络适配
+
+```swift title="网络感知的渲染器"
+import Network
+
 class NetworkAwareAvatarRenderer {
     private let networkMonitor = NWPathMonitor()
     private var renderer: AvatarRenderer?
-    private var isOnline = true
+    private var networkStatus: NetworkStatus = .unknown
+    private let networkQueue = DispatchQueue(label: "network.monitor")
+    
+    enum NetworkStatus {
+        case unknown
+        case unavailable
+        case wifi
+        case cellular
+        case ethernet
+        
+        var description: String {
+            switch self {
+            case .unknown: return "未知"
+            case .unavailable: return "无网络"
+            case .wifi: return "WiFi"
+            case .cellular: return "蜂窝网络"
+            case .ethernet: return "以太网"
+            }
+        }
+        
+        var recommendedQuality: RenderQuality {
+            switch self {
+            case .wifi, .ethernet:
+                return .high
+            case .cellular:
+                return .medium
+            case .unavailable, .unknown:
+                return .low
+            }
+        }
+    }
     
     func setupNetworkMonitoring() {
         networkMonitor.pathUpdateHandler = { [weak self] path in
+            let newStatus = self?.determineNetworkStatus(from: path) ?? .unknown
+            
             DispatchQueue.main.async {
-                let wasOnline = self?.isOnline ?? true
-                self?.isOnline = path.status == .satisfied
-                
-                if !wasOnline && self?.isOnline == true {
-                    self?.onNetworkAvailable()
-                } else if wasOnline && self?.isOnline == false {
-                    self?.onNetworkUnavailable()
-                }
+                self?.handleNetworkStatusChange(from: self?.networkStatus ?? .unknown, to: newStatus)
+                self?.networkStatus = newStatus
             }
         }
-        networkMonitor.start(queue: DispatchQueue.global())
+        
+        networkMonitor.start(queue: networkQueue)
     }
     
-    private func onNetworkAvailable() {
-        print("网络恢复，重新加载模型")
-        // 重新加载模型或恢复渲染
+    private func determineNetworkStatus(from path: NWPath) -> NetworkStatus {
+        guard path.status == .satisfied else {
+            return .unavailable
+        }
+        
+        if path.usesInterfaceType(.wifi) {
+            return .wifi
+        } else if path.usesInterfaceType(.cellular) {
+            return .cellular
+        } else if path.usesInterfaceType(.wiredEthernet) {
+            return .ethernet
+        } else {
+            return .unknown
+        }
+    }
+    
+    private func handleNetworkStatusChange(from oldStatus: NetworkStatus, to newStatus: NetworkStatus) {
+        print("网络状态变化: \(oldStatus.description) -> \(newStatus.description)")
+        
+        switch (oldStatus, newStatus) {
+        case (_, .unavailable):
+            onNetworkUnavailable()
+        case (.unavailable, _):
+            onNetworkAvailable(newStatus)
+        case (.cellular, .wifi), (.wifi, .cellular):
+            onNetworkTypeChanged(newStatus)
+        default:
+            break
+        }
+    }
+    
+    private func onNetworkAvailable(_ status: NetworkStatus) {
+        print("网络恢复: \(status.description)")
+        
+        // 根据网络类型调整渲染质量
+        renderer?.quality = status.recommendedQuality
+        
+        // 重新加载失败的模型
+        retryFailedOperations()
+        
+        // 显示网络恢复提示
+        showNetworkStatusAlert("网络已恢复", message: "当前网络: \(status.description)")
     }
     
     private func onNetworkUnavailable() {
         print("网络断开，切换到离线模式")
-        // 切换到离线模式或显示提示
+        
+        // 降低渲染质量以节省资源
+        renderer?.quality = .low
+        
+        // 暂停非必要的网络操作
+        pauseNetworkOperations()
+        
+        // 显示离线模式提示
+        showNetworkStatusAlert("网络连接中断", message: "已切换到离线模式")
+    }
+    
+    private func onNetworkTypeChanged(_ newStatus: NetworkStatus) {
+        print("网络类型变化: \(newStatus.description)")
+        
+        // 根据新的网络类型调整策略
+        renderer?.quality = newStatus.recommendedQuality
+        
+        // 如果从WiFi切换到蜂窝网络，可能需要暂停大文件下载
+        if newStatus == .cellular {
+            pauseLargeDownloads()
+        }
+    }
+    
+    private func retryFailedOperations() {
+        // 重试之前因网络问题失败的操作
+        // 这里可以实现重试队列逻辑
+    }
+    
+    private func pauseNetworkOperations() {
+        // 暂停非必要的网络操作
+        // 例如：模型预加载、分析数据上传等
+    }
+    
+    private func pauseLargeDownloads() {
+        // 在蜂窝网络下暂停大文件下载
+        // 可以询问用户是否继续
+    }
+    
+    private func showNetworkStatusAlert(_ title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        
+        // 显示警告（需要获取当前视图控制器）
+        DispatchQueue.main.async {
+            if let topViewController = UIApplication.shared.topViewController() {
+                topViewController.present(alert, animated: true)
+            }
+        }
+    }
+    
+    deinit {
+        networkMonitor.cancel()
     }
 }
-```
+
+// UIApplication 扩展，用于获取顶层视图控制器
+extension UIApplication {
+    func topViewController() -> UIViewController? {
+        guard let windowScene = connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first else {
+            return nil
+        }
+        
+        var topViewController = window.rootViewController
+        
+        while let presentedViewController = topViewController?.presentedViewController {
+            topViewController = presentedViewController
+        }
+        
+        return topViewController
+    }
+}```
+
+<Tip>
+根据网络类型自动调整渲染质量和下载策略，可以为用户提供更好的体验并节省流量。
+</Tip>
 
 ## 调试技巧
 
+<Info>
+有效的调试策略可以帮助快速定位和解决问题，提高开发效率。
+</Info>
+
 ### 日志配置
 
-根据环境配置合适的日志级别。
+<Warning>
+在生产环境中，请确保关闭调试日志以避免性能影响和敏感信息泄露。
+</Warning>
 
-```swift
-func configureLogging() {
-    #if DEBUG
-    // 开发环境启用详细日志
-    AvatarSDK.setLogLevel(.verbose)
-    #else
-    // 生产环境只记录错误
-    AvatarSDK.setLogLevel(.error)
-    #endif
-    
-    // 启用远程日志上传（可选）
-    AvatarSDK.enableRemoteLogUpload(true)
-}
-```
+#### 智能日志管理
 
-### 性能监控
+```swift title="环境感知的日志配置"
+import os.log
 
-实现性能监控帮助优化应用。
-
-```swift
-class PerformanceMonitor {
-    private var startTime: CFTimeInterval = 0
-    private var metrics: [String: Double] = [:]
-    
-    func startMonitoring(_ operation: String) {
-        startTime = CACurrentMediaTime()
+class AvatarLogManager {
+    enum LogLevel: Int, CaseIterable {
+        case verbose = 0
+        case debug = 1
+        case info = 2
+        case warning = 3
+        case error = 4
+        case critical = 5
+        
+        var emoji: String {
+            switch self {
+            case .verbose: return "💬"
+            case .debug: return "🔍"
+            case .info: return "ℹ️"
+            case .warning: return "⚠️"
+            case .error: return "❌"
+            case .critical: return "🚨"
+            }
+        }
+        
+        var osLogType: OSLogType {
+            switch self {
+            case .verbose, .debug: return .debug
+            case .info: return .info
+            case .warning: return .default
+            case .error: return .error
+            case .critical: return .fault
+            }
+        }
     }
     
-    func endMonitoring(_ operation: String) {
-        let duration = CACurrentMediaTime() - startTime
-        metrics[operation] = duration
-        
+    static let shared = AvatarLogManager()
+    private let subsystem = "com.avatarkit.sdk"
+    private let logger = OSLog(subsystem: "com.avatarkit.sdk", category: "General")
+    
+    var currentLevel: LogLevel = {
         #if DEBUG
-        print("\(operation) 耗时: \(duration) 秒")
+        return .verbose
+        #elseif STAGING
+        return .info
+        #else
+        return .error
+        #endif
+    }()
+    
+    var isRemoteLoggingEnabled = false
+    private var logBuffer: [LogEntry] = []
+    private let maxBufferSize = 1000
+    
+    struct LogEntry {
+        let timestamp: Date
+        let level: LogLevel
+        let category: String
+        let message: String
+        let file: String
+        let function: String
+        let line: Int
+    }
+    
+    func configure() {
+        #if DEBUG
+        // 开发环境启用详细日志
+        AvatarSDK.setLogLevel(.verbose)
+        print("🔧 调试模式：启用详细日志")
+        #elseif STAGING
+        // 测试环境启用信息日志
+        AvatarSDK.setLogLevel(.info)
+        isRemoteLoggingEnabled = true
+        print("🧪 测试模式：启用信息日志和远程上传")
+        #else
+        // 生产环境只记录错误
+        AvatarSDK.setLogLevel(.error)
+        isRemoteLoggingEnabled = true
+        print("🚀 生产模式：仅记录错误日志")
         #endif
     }
     
-    func getMetrics() -> [String: Double] {
-        return metrics
+    func log(
+        _ message: String,
+        level: LogLevel = .info,
+        category: String = "SDK",
+        file: String = #file,
+        function: String = #function,
+        line: Int = #line
+    ) {
+        guard level.rawValue >= currentLevel.rawValue else { return }
+        
+        let fileName = (file as NSString).lastPathComponent
+        let timestamp = Date()
+        
+        // 创建日志条目
+        let entry = LogEntry(
+            timestamp: timestamp,
+            level: level,
+            category: category,
+            message: message,
+            file: fileName,
+            function: function,
+            line: line
+        )
+        
+        // 控制台输出
+        let formattedMessage = formatLogMessage(entry)
+        print(formattedMessage)
+        
+        // 系统日志
+        os_log("%{public}@", log: logger, type: level.osLogType, message)
+        
+        // 缓存日志用于远程上传
+        if isRemoteLoggingEnabled {
+            addToBuffer(entry)
+        }
+        
+        // 关键错误处理
+        if level == .critical {
+            handleCriticalError(entry)
+        }
+    }
+    
+    private func formatLogMessage(_ entry: LogEntry) -> String {
+        let timestamp = DateFormatter.logFormatter.string(from: entry.timestamp)
+        return "\(timestamp) \(entry.level.emoji) [\(entry.category)] [\(entry.file):\(entry.line)] \(entry.function) - \(entry.message)"
+    }
+    
+    private func addToBuffer(_ entry: LogEntry) {
+        logBuffer.append(entry)
+        
+        // 保持缓冲区大小
+        if logBuffer.count > maxBufferSize {
+            logBuffer.removeFirst(logBuffer.count - maxBufferSize)
+        }
+    }
+    
+    private func handleCriticalError(_ entry: LogEntry) {
+        // 立即上传关键错误
+        uploadCriticalError(entry)
+        
+        // 记录到本地文件
+        saveCriticalErrorToFile(entry)
+    }
+    
+    private func uploadCriticalError(_ entry: LogEntry) {
+        // 实现远程错误上传逻辑
+        // 可以集成 Crashlytics、Sentry 等服务
+    }
+    
+    private func saveCriticalErrorToFile(_ entry: LogEntry) {
+        // 保存到本地文件以防网络问题
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let logFile = documentsPath.appendingPathComponent("critical_errors.log")
+        
+        let logLine = "\(entry.timestamp): \(entry.message)\n"
+        
+        if let data = logLine.data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: logFile.path) {
+                if let fileHandle = try? FileHandle(forWritingTo: logFile) {
+                    fileHandle.seekToEndOfFile()
+                    fileHandle.write(data)
+                    fileHandle.closeFile()
+                }
+            } else {
+                try? data.write(to: logFile)
+            }
+        }
+    }
+    
+    func uploadBufferedLogs() {
+        guard isRemoteLoggingEnabled && !logBuffer.isEmpty else { return }
+        
+        // 实现批量日志上传
+        let logsToUpload = logBuffer
+        logBuffer.removeAll()
+        
+        // 异步上传
+        DispatchQueue.global(qos: .utility).async {
+            // 实现上传逻辑
+            self.performLogUpload(logsToUpload)
+        }
+    }
+    
+    private func performLogUpload(_ logs: [LogEntry]) {
+        // 实现实际的上传逻辑
+        // 可以使用 URLSession 或其他网络库
     }
 }
-```
+
+extension DateFormatter {
+    static let logFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
+}
+
+// 便捷的全局日志函数
+func AvatarLog(
+    _ message: String,
+    level: AvatarLogManager.LogLevel = .info,
+    category: String = "SDK",
+    file: String = #file,
+    function: String = #function,
+    line: Int = #line
+) {
+    AvatarLogManager.shared.log(
+        message,
+        level: level,
+        category: category,
+        file: file,
+        function: function,
+        line: line
+    )
+}```
+
+<Check>
+这个日志系统支持环境感知配置、远程上传和关键错误处理，适合生产环境使用。
+</Check>
+
+### 性能监控
+
+<Tip>
+性能监控可以帮助识别瓶颈，优化用户体验。建议监控关键操作的耗时和资源使用情况。
+</Tip>
+
+#### 综合性能监控系统
+
+```swift title="高级性能监控器"
+import QuartzCore
+import os.signpost
+
+class AvatarPerformanceMonitor {
+    static let shared = AvatarPerformanceMonitor()
+    
+    private let subsystem = "com.avatarkit.performance"
+    private let signpostLog: OSLog
+    private var activeOperations: [String: (startTime: CFTimeInterval, signpostID: OSSignpostID)] = [:]
+    private var metrics: [String: PerformanceMetric] = [:]
+    private let metricsQueue = DispatchQueue(label: "performance.metrics", qos: .utility)
+    
+    struct PerformanceMetric {
+        let operationName: String
+        var totalTime: TimeInterval = 0
+        var executionCount: Int = 0
+        var minTime: TimeInterval = .greatestFiniteMagnitude
+        var maxTime: TimeInterval = 0
+        var lastExecutionTime: Date = Date()
+        
+        var averageTime: TimeInterval {
+            return executionCount > 0 ? totalTime / Double(executionCount) : 0
+        }
+        
+        mutating func addExecution(duration: TimeInterval) {
+            totalTime += duration
+            executionCount += 1
+            minTime = min(minTime, duration)
+            maxTime = max(maxTime, duration)
+            lastExecutionTime = Date()
+        }
+    }
+    
+    private init() {
+        signpostLog = OSLog(subsystem: subsystem, category: "Operations")
+    }
+    
+    func startMonitoring(_ operation: String, metadata: [String: Any] = [:]) {
+        let startTime = CACurrentMediaTime()
+        let signpostID = OSSignpostID(log: signpostLog)
+        
+        metricsQueue.async {
+            self.activeOperations[operation] = (startTime, signpostID)
+        }
+        
+        // 使用 os_signpost 进行系统级性能追踪
+        os_signpost(.begin, log: signpostLog, name: "Operation", signpostID: signpostID, 
+                   "%{public}@", operation)
+        
+        AvatarLog("开始监控操作: \(operation)", level: .debug, category: "Performance")
+        
+        // 记录元数据
+        if !metadata.isEmpty {
+            let metadataString = metadata.map { "\($0.key): \($0.value)" }.joined(separator: ", ")
+            AvatarLog("操作元数据: \(metadataString)", level: .verbose, category: "Performance")
+        }
+    }
+    
+    func endMonitoring(_ operation: String, success: Bool = true, errorInfo: String? = nil) {
+        metricsQueue.async {
+            guard let (startTime, signpostID) = self.activeOperations.removeValue(forKey: operation) else {
+                AvatarLog("警告: 未找到操作 \(operation) 的开始时间", level: .warning, category: "Performance")
+                return
+            }
+            
+            let duration = CACurrentMediaTime() - startTime
+            
+            // 更新性能指标
+            if self.metrics[operation] == nil {
+                self.metrics[operation] = PerformanceMetric(operationName: operation)
+            }
+            self.metrics[operation]?.addExecution(duration: duration)
+            
+            // 结束 signpost
+            os_signpost(.end, log: self.signpostLog, name: "Operation", signpostID: signpostID)
+            
+            // 记录性能日志
+            let status = success ? "成功" : "失败"
+            let durationMs = duration * 1000
+            var logMessage = "\(operation) \(status) - 耗时: \(String(format: "%.2f", durationMs))ms"
+            
+            if let error = errorInfo {
+                logMessage += " - 错误: \(error)"
+            }
+            
+            let logLevel: AvatarLogManager.LogLevel = {
+                if !success { return .error }
+                if duration > 1.0 { return .warning }  // 超过1秒的操作
+                return .info
+            }()
+            
+            AvatarLog(logMessage, level: logLevel, category: "Performance")
+            
+            // 检查性能阈值
+            self.checkPerformanceThresholds(operation: operation, duration: duration)
+        }
+    }
+    
+    private func checkPerformanceThresholds(operation: String, duration: TimeInterval) {
+        let thresholds: [String: TimeInterval] = [
+            "模型加载": 3.0,
+            "音频应用": 0.5,
+            "渲染初始化": 1.0,
+            "网络请求": 5.0
+        ]
+        
+        if let threshold = thresholds[operation], duration > threshold {
+            AvatarLog(
+                "性能警告: \(operation) 耗时 \(String(format: "%.2f", duration))s 超过阈值 \(threshold)s",
+                level: .warning,
+                category: "Performance"
+            )
+            
+            // 可以在这里触发性能优化建议或自动调整
+            suggestOptimization(for: operation, duration: duration)
+        }
+    }
+    
+    private func suggestOptimization(for operation: String, duration: TimeInterval) {
+        let suggestions: [String: String] = [
+            "模型加载": "考虑启用模型预加载或使用更小的模型文件",
+            "音频应用": "检查音频文件大小和格式，考虑使用压缩格式",
+            "渲染初始化": "检查设备性能，考虑降低渲染质量",
+            "网络请求": "检查网络连接，考虑启用请求缓存"
+        ]
+        
+        if let suggestion = suggestions[operation] {
+            AvatarLog(
+                "性能优化建议: \(suggestion)",
+                level: .info,
+                category: "Performance"
+            )
+        }
+    }
+    
+    func getMetrics() -> [String: PerformanceMetric] {
+        return metricsQueue.sync {
+            return metrics
+        }
+    }
+    
+    func getMetricsSummary() -> String {
+        let currentMetrics = getMetrics()
+        
+        guard !currentMetrics.isEmpty else {
+            return "暂无性能数据"
+        }
+        
+        var summary = "=== 性能监控报告 ===\n"
+        
+        for (operation, metric) in currentMetrics.sorted(by: { $0.key < $1.key }) {
+            summary += "\n操作: \(operation)\n"
+            summary += "  执行次数: \(metric.executionCount)\n"
+            summary += "  平均耗时: \(String(format: "%.2f", metric.averageTime * 1000))ms\n"
+            summary += "  最短耗时: \(String(format: "%.2f", metric.minTime * 1000))ms\n"
+            summary += "  最长耗时: \(String(format: "%.2f", metric.maxTime * 1000))ms\n"
+            summary += "  最后执行: \(DateFormatter.logFormatter.string(from: metric.lastExecutionTime))\n"
+        }
+        
+        return summary
+    }
+    
+    func resetMetrics() {
+        metricsQueue.async {
+            self.metrics.removeAll()
+            AvatarLog("性能指标已重置", level: .info, category: "Performance")
+        }
+    }
+    
+    // 便捷方法：监控代码块执行
+    func monitor<T>(
+        operation: String,
+        metadata: [String: Any] = [:],
+        execute: () throws -> T
+    ) rethrows -> T {
+        startMonitoring(operation, metadata: metadata)
+        
+        do {
+            let result = try execute()
+            endMonitoring(operation, success: true)
+            return result
+        } catch {
+            endMonitoring(operation, success: false, errorInfo: error.localizedDescription)
+            throw error
+        }
+    }
+    
+    // 异步操作监控
+    func monitorAsync<T>(
+        operation: String,
+        metadata: [String: Any] = [:],
+        execute: @escaping () async throws -> T
+    ) async rethrows -> T {
+        startMonitoring(operation, metadata: metadata)
+        
+        do {
+            let result = try await execute()
+            endMonitoring(operation, success: true)
+            return result
+        } catch {
+            endMonitoring(operation, success: false, errorInfo: error.localizedDescription)
+            throw error
+        }
+    }
+}
+
+// 使用示例
+extension AvatarRenderer {
+    func loadModelWithMonitoring(modelId: String) async {
+        await AvatarPerformanceMonitor.shared.monitorAsync(
+            operation: "模型加载",
+            metadata: ["modelId": modelId, "deviceModel": UIDevice.current.model]
+        ) {
+            // 实际的模型加载逻辑
+            try await self.loadModel(modelId: modelId)
+        }
+    }
+}```
+
+<Info>
+使用 os_signpost 可以在 Instruments 中查看详细的性能分析，这对于深度性能优化非常有用。
+</Info>
 
 ## 安全考虑
 
+<Warning>
+安全性是生产环境中的关键考虑因素。请确保遵循最佳安全实践，保护用户数据和应用程序。
+</Warning>
+
 ### 配置安全
 
-保护敏感配置信息。
+<Info>
+敏感配置信息应该通过安全的方式管理，避免硬编码在源代码中。
+</Info>
 
-```swift
-// 使用环境变量或配置文件
-struct Config {
-    static let appId: String = {
-        guard let appId = ProcessInfo.processInfo.environment["AVATAR_APP_ID"] else {
-            fatalError("AVATAR_APP_ID 环境变量未设置")
+#### 安全配置管理
+
+```swift title="安全的配置管理系统"
+import Security
+import CryptoKit
+
+class SecureConfigManager {
+    static let shared = SecureConfigManager()
+    
+    private let keychainService = "com.avatarkit.config"
+    private let configQueue = DispatchQueue(label: "config.secure", qos: .userInitiated)
+    
+    enum ConfigKey: String, CaseIterable {
+        case appId = "AVATAR_APP_ID"
+        case appSecret = "AVATAR_APP_SECRET"
+        case apiEndpoint = "AVATAR_API_ENDPOINT"
+        case encryptionKey = "AVATAR_ENCRYPTION_KEY"
+        
+        var isRequired: Bool {
+            switch self {
+            case .appId, .appSecret:
+                return true
+            case .apiEndpoint, .encryptionKey:
+                return false
+            }
+        }
+    }
+    
+    private init() {
+        validateConfiguration()
+    }
+    
+    // 从多个来源获取配置
+    func getConfig(for key: ConfigKey) -> String? {
+        // 1. 首先尝试从 Keychain 获取
+        if let keychainValue = getFromKeychain(key: key.rawValue) {
+            return keychainValue
+        }
+        
+        // 2. 然后尝试从环境变量获取
+        if let envValue = ProcessInfo.processInfo.environment[key.rawValue] {
+            // 将环境变量值存储到 Keychain 以供后续使用
+            saveToKeychain(key: key.rawValue, value: envValue)
+            return envValue
+        }
+        
+        // 3. 最后尝试从配置文件获取
+        if let fileValue = getFromConfigFile(key: key.rawValue) {
+            return fileValue
+        }
+        
+        // 4. 如果是必需的配置但未找到，记录错误
+        if key.isRequired {
+            AvatarLog("关键配置缺失: \(key.rawValue)", level: .critical, category: "Security")
+        }
+        
+        return nil
+    }
+    
+    private func getFromKeychain(key: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let value = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        
+        return value
+    }
+    
+    private func saveToKeychain(key: String, value: String) {
+        guard let data = value.data(using: .utf8) else { return }
+        
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: data
+        ]
+        
+        // 先删除现有项目
+        SecItemDelete(query as CFDictionary)
+        
+        // 添加新项目
+        let status = SecItemAdd(query as CFDictionary, nil)
+        
+        if status != errSecSuccess {
+            AvatarLog("Keychain 存储失败: \(key)", level: .error, category: "Security")
+        }
+    }
+    
+    private func getFromConfigFile(key: String) -> String? {
+        guard let path = Bundle.main.path(forResource: "AvatarConfig", ofType: "plist"),
+              let plist = NSDictionary(contentsOfFile: path) else {
+            return nil
+        }
+        
+        return plist[key] as? String
+    }
+    
+    private func validateConfiguration() {
+        configQueue.async {
+            var missingConfigs: [ConfigKey] = []
+            
+            for configKey in ConfigKey.allCases {
+                if configKey.isRequired && self.getConfig(for: configKey) == nil {
+                    missingConfigs.append(configKey)
+                }
+            }
+            
+            if !missingConfigs.isEmpty {
+                let missingKeys = missingConfigs.map { $0.rawValue }.joined(separator: ", ")
+                AvatarLog(
+                    "配置验证失败，缺少必需配置: \(missingKeys)",
+                    level: .critical,
+                    category: "Security"
+                )
+                
+                #if DEBUG
+                fatalError("关键配置缺失: \(missingKeys)")
+                #endif
+            } else {
+                AvatarLog("配置验证通过", level: .info, category: "Security")
+            }
+        }
+    }
+    
+    // 安全地清除敏感配置
+    func clearSensitiveData() {
+        for configKey in ConfigKey.allCases {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: keychainService,
+                kSecAttrAccount as String: configKey.rawValue
+            ]
+            
+            SecItemDelete(query as CFDictionary)
+        }
+        
+        AvatarLog("敏感配置已清除", level: .info, category: "Security")
+    }
+}
+
+// 便捷的配置访问
+struct AvatarConfig {
+    static var appId: String {
+        guard let appId = SecureConfigManager.shared.getConfig(for: .appId) else {
+            fatalError("AVATAR_APP_ID 配置未设置")
         }
         return appId
-    }()
+    }
     
-    static let appSecret: String = {
-        guard let appSecret = ProcessInfo.processInfo.environment["AVATAR_APP_SECRET"] else {
-            fatalError("AVATAR_APP_SECRET 环境变量未设置")
+    static var appSecret: String {
+        guard let appSecret = SecureConfigManager.shared.getConfig(for: .appSecret) else {
+            fatalError("AVATAR_APP_SECRET 配置未设置")
         }
         return appSecret
-    }()
-}
-```
+    }
+    
+    static var apiEndpoint: String {
+        return SecureConfigManager.shared.getConfig(for: .apiEndpoint) ?? "https://api.avatarkit.com"
+    }
+}```
+
+<Check>
+这个配置管理系统支持多种配置来源，并使用 Keychain 安全存储敏感信息。
+</Check>
 
 ### 输入验证
 
-验证所有外部输入。
+<Warning>
+所有外部输入都应该经过严格验证，以防止安全漏洞和恶意攻击。
+</Warning>
 
-```swift
-func validateModelURL(_ url: URL) -> Bool {
-    // 检查 URL 格式
-    guard url.scheme == "https" else {
-        print("只支持 HTTPS 协议")
+#### 综合输入验证系统
+
+```swift title="安全的输入验证器"
+import Foundation
+import Network
+
+class InputValidator {
+    static let shared = InputValidator()
+    
+    // URL 验证配置
+    struct URLValidationConfig {
+        let allowedSchemes: Set<String>
+        let allowedDomains: Set<String>
+        let maxPathLength: Int
+        let allowedFileExtensions: Set<String>
+        
+        static let `default` = URLValidationConfig(
+            allowedSchemes: ["https"],
+            allowedDomains: ["cdn.avatarkit.com", "assets.avatarkit.com", "api.avatarkit.com"],
+            maxPathLength: 500,
+            allowedFileExtensions: ["avatar", "json", "wav", "mp3", "m4a"]
+        )
+    }
+    
+    // 文本验证配置
+    struct TextValidationConfig {
+        let maxLength: Int
+        let allowedCharacters: CharacterSet
+        let forbiddenPatterns: [String]
+        
+        static let modelId = TextValidationConfig(
+            maxLength: 100,
+            allowedCharacters: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_")),
+            forbiddenPatterns: ["<script", "javascript:", "data:"]
+        )
+        
+        static let audioText = TextValidationConfig(
+            maxLength: 1000,
+            allowedCharacters: CharacterSet.alphanumerics.union(CharacterSet.punctuationCharacters).union(CharacterSet.whitespaces),
+            forbiddenPatterns: ["<script", "javascript:", "data:", "<?php"]
+        )
+    }
+    
+    enum ValidationError: LocalizedError {
+        case invalidScheme(String)
+        case unauthorizedDomain(String)
+        case pathTooLong(Int)
+        case invalidFileExtension(String)
+        case textTooLong(Int)
+        case invalidCharacters(String)
+        case forbiddenPattern(String)
+        case malformedURL
+        case networkValidationFailed
+        
+        var errorDescription: String? {
+            switch self {
+            case .invalidScheme(let scheme):
+                return "不支持的协议: \(scheme)"
+            case .unauthorizedDomain(let domain):
+                return "未授权的域名: \(domain)"
+            case .pathTooLong(let length):
+                return "路径过长: \(length) 字符"
+            case .invalidFileExtension(let ext):
+                return "不支持的文件扩展名: \(ext)"
+            case .textTooLong(let length):
+                return "文本过长: \(length) 字符"
+            case .invalidCharacters(let text):
+                return "包含非法字符: \(text)"
+            case .forbiddenPattern(let pattern):
+                return "包含禁止的模式: \(pattern)"
+            case .malformedURL:
+                return "URL 格式错误"
+            case .networkValidationFailed:
+                return "网络验证失败"
+            }
+        }
+    }
+    
+    private init() {}
+    
+    // URL 验证
+    func validateURL(_ url: URL, config: URLValidationConfig = .default) throws {
+        // 1. 检查协议
+        guard let scheme = url.scheme?.lowercased(),
+              config.allowedSchemes.contains(scheme) else {
+            throw ValidationError.invalidScheme(url.scheme ?? "unknown")
+        }
+        
+        // 2. 检查域名
+        guard let host = url.host?.lowercased(),
+              config.allowedDomains.contains(host) else {
+            throw ValidationError.unauthorizedDomain(url.host ?? "unknown")
+        }
+        
+        // 3. 检查路径长度
+        let pathLength = url.path.count
+        guard pathLength <= config.maxPathLength else {
+            throw ValidationError.pathTooLong(pathLength)
+        }
+        
+        // 4. 检查文件扩展名
+        let fileExtension = url.pathExtension.lowercased()
+        if !fileExtension.isEmpty && !config.allowedFileExtensions.contains(fileExtension) {
+            throw ValidationError.invalidFileExtension(fileExtension)
+        }
+        
+        // 5. 额外的安全检查
+        try performAdditionalURLChecks(url)
+        
+        AvatarLog("URL 验证通过: \(url.absoluteString)", level: .debug, category: "Security")
+    }
+    
+    private func performAdditionalURLChecks(_ url: URL) throws {
+        let urlString = url.absoluteString
+        
+        // 检查是否包含可疑的编码字符
+        let suspiciousPatterns = [
+            "%3Cscript",  // <script
+            "%3C%2Fscript", // </script
+            "javascript%3A", // javascript:
+            "data%3A", // data:
+            "%00", // null byte
+            "../", // path traversal
+            "..%2F" // encoded path traversal
+        ]
+        
+        for pattern in suspiciousPatterns {
+            if urlString.lowercased().contains(pattern.lowercased()) {
+                throw ValidationError.forbiddenPattern(pattern)
+            }
+        }
+    }
+    
+    // 文本验证
+    func validateText(_ text: String, config: TextValidationConfig) throws {
+        // 1. 检查长度
+        guard text.count <= config.maxLength else {
+            throw ValidationError.textTooLong(text.count)
+        }
+        
+        // 2. 检查字符集
+        let textCharacterSet = CharacterSet(charactersIn: text)
+        guard config.allowedCharacters.isSuperset(of: textCharacterSet) else {
+            throw ValidationError.invalidCharacters(text)
+        }
+        
+        // 3. 检查禁止的模式
+        let lowercaseText = text.lowercased()
+        for pattern in config.forbiddenPatterns {
+            if lowercaseText.contains(pattern.lowercased()) {
+                throw ValidationError.forbiddenPattern(pattern)
+            }
+        }
+        
+        AvatarLog("文本验证通过: \(text.prefix(50))...", level: .debug, category: "Security")
+    }
+    
+    // 模型 ID 验证
+    func validateModelId(_ modelId: String) throws {
+        try validateText(modelId, config: .modelId)
+        
+        // 额外的模型 ID 特定检查
+        guard !modelId.isEmpty else {
+            throw ValidationError.invalidCharacters("模型 ID 不能为空")
+        }
+        
+        guard modelId.first?.isLetter == true else {
+            throw ValidationError.invalidCharacters("模型 ID 必须以字母开头")
+        }
+    }
+    
+    // 音频文本验证
+    func validateAudioText(_ text: String) throws {
+        try validateText(text, config: .audioText)
+        
+        // 检查是否包含过多的重复字符（可能的 DoS 攻击）
+        if hasExcessiveRepetition(text) {
+            throw ValidationError.forbiddenPattern("过多重复字符")
+        }
+    }
+    
+    private func hasExcessiveRepetition(_ text: String) -> Bool {
+        let maxRepetition = 10
+        var currentChar: Character?
+        var repetitionCount = 0
+        
+        for char in text {
+            if char == currentChar {
+                repetitionCount += 1
+                if repetitionCount > maxRepetition {
+                    return true
+                }
+            } else {
+                currentChar = char
+                repetitionCount = 1
+            }
+        }
+        
         return false
     }
+    
+    // 网络连接验证（异步）
+    func validateNetworkConnection(to url: URL) async throws {
+        let monitor = NWPathMonitor()
+        let queue = DispatchQueue(label: "network.validation")
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            monitor.pathUpdateHandler = { path in
+                monitor.cancel()
+                
+                if path.status == .satisfied {
+                    continuation.resume()
+                } else {
+                    continuation.resume(throwing: ValidationError.networkValidationFailed)
+                }
+            }
+            
+            monitor.start(queue: queue)
+            
+            // 设置超时
+            DispatchQueue.global().asyncAfter(deadline: .now() + 5.0) {
+                monitor.cancel()
+                continuation.resume(throwing: ValidationError.networkValidationFailed)
+            }
+        }
+    }
+}
+
+// 使用示例
+extension AvatarRenderer {
+    func loadModelSafely(from url: URL, modelId: String) async throws {
+        // 验证输入
+        try InputValidator.shared.validateURL(url)
+        try InputValidator.shared.validateModelId(modelId)
+        
+        // 验证网络连接
+        try await InputValidator.shared.validateNetworkConnection(to: url)
+        
+        AvatarLog("输入验证通过，开始加载模型", level: .info, category: "Security")
+        
+        // 执行实际的模型加载
+        try await loadModel(from: url, modelId: modelId)
+    }
+    
+    func applyAudioSafely(text: String) throws {
+        // 验证音频文本
+        try InputValidator.shared.validateAudioText(text)
+        
+        AvatarLog("音频文本验证通过", level: .info, category: "Security")
+        
+        // 执行实际的音频应用
+        try applyAudio(text: text)
+    }
+}```
+
+<Tip>
+定期更新验证规则和安全策略，以应对新的安全威胁和攻击方式。
+</Tip>
     
     // 检查域名白名单
     let allowedDomains = ["cdn.example.com", "assets.example.com"]
@@ -356,71 +1850,531 @@ func validateModelURL(_ url: URL) -> Bool {
 
 ### 单元测试
 
-为关键功能编写单元测试。
+<Warning>
+单元测试应该覆盖所有核心功能和边界情况，确保代码质量和稳定性。
+</Warning>
 
-```swift
+#### 全面的单元测试套件
+
+```swift title="核心功能单元测试"
 import XCTest
-@testable import YourApp
+import Combine
+@testable import AvatarKit
 
 class AvatarRendererTests: XCTestCase {
     var renderer: AvatarRenderer!
+    var mockDelegate: MockAvatarRendererDelegate!
+    var cancellables: Set<AnyCancellable>!
     
     override func setUp() {
         super.setUp()
         renderer = AvatarRenderer(frame: .zero)
+        mockDelegate = MockAvatarRendererDelegate()
+        renderer.delegate = mockDelegate
+        cancellables = Set<AnyCancellable>()
+    }
+    
+    override func tearDown() {
+        cancellables.removeAll()
+        renderer = nil
+        mockDelegate = nil
+        super.tearDown()
+    }
+    
+    // MARK: - 初始化测试
+    
+    func testInitialization() {
+        XCTAssertNotNil(renderer)
+        XCTAssertEqual(renderer.state, .idle)
+        XCTAssertNil(renderer.currentModel)
+        XCTAssertFalse(renderer.isLoading)
+    }
+    
+    func testInitializationWithConfig() {
+        let config = AvatarConfig(
+            renderQuality: .high,
+            enableAudio: true,
+            maxCacheSize: 100 * 1024 * 1024
+        )
+        
+        let configuredRenderer = AvatarRenderer(frame: .zero, config: config)
+        XCTAssertEqual(configuredRenderer.config.renderQuality, .high)
+        XCTAssertTrue(configuredRenderer.config.enableAudio)
+    }
+    
+    // MARK: - 模型加载测试
+    
+    func testModelLoadingSuccess() async throws {
+        let expectation = expectation(description: "Model loading success")
+        let testURL = URL(string: "https://cdn.avatarkit.com/test-model.avatar")!
+        
+        mockDelegate.onDidLoadModel = {
+            expectation.fulfill()
+        }
+        
+        try await renderer.loadModel(from: testURL)
+        
+        await fulfillment(of: [expectation], timeout: 10.0)
+        
+        XCTAssertEqual(renderer.state, .ready)
+        XCTAssertNotNil(renderer.currentModel)
+        XCTAssertTrue(mockDelegate.didLoadModelCalled)
+    }
+    
+    func testModelLoadingFailure() async {
+        let expectation = expectation(description: "Model loading failure")
+        let invalidURL = URL(string: "https://invalid-domain.com/model.avatar")!
+        
+        mockDelegate.onDidFailWithError = { error in
+            XCTAssertTrue(error is AvatarError)
+            expectation.fulfill()
+        }
+        
+        do {
+            try await renderer.loadModel(from: invalidURL)
+            XCTFail("Expected model loading to fail")
+        } catch {
+            // 预期的错误
+        }
+        
+        await fulfillment(of: [expectation], timeout: 5.0)
+        
+        XCTAssertEqual(renderer.state, .error)
+        XCTAssertTrue(mockDelegate.didFailWithErrorCalled)
+    }
+    
+    func testModelLoadingCancellation() async throws {
+        let testURL = URL(string: "https://cdn.avatarkit.com/large-model.avatar")!
+        
+        // 开始加载
+        let loadingTask = Task {
+            try await renderer.loadModel(from: testURL)
+        }
+        
+        // 立即取消
+        loadingTask.cancel()
+        
+        do {
+            try await loadingTask.value
+            XCTFail("Expected task to be cancelled")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        
+        XCTAssertEqual(renderer.state, .idle)
+    }
+    
+    // MARK: - 音频应用测试
+    
+    func testAudioApplicationSuccess() async throws {
+        // 首先加载模型
+        let testURL = URL(string: "https://cdn.avatarkit.com/test-model.avatar")!
+        try await renderer.loadModel(from: testURL)
+        
+        let expectation = expectation(description: "Audio application success")
+        let testText = "Hello, this is a test message."
+        
+        mockDelegate.onDidApplyAudio = {
+            expectation.fulfill()
+        }
+        
+        try await renderer.applyAudio(text: testText)
+        
+        await fulfillment(of: [expectation], timeout: 10.0)
+        
+        XCTAssertTrue(mockDelegate.didApplyAudioCalled)
+    }
+    
+    func testAudioApplicationWithoutModel() async {
+        let testText = "Hello, world!"
+        
+        do {
+            try await renderer.applyAudio(text: testText)
+            XCTFail("Expected audio application to fail without model")
+        } catch let error as AvatarError {
+            XCTAssertEqual(error, .modelNotLoaded)
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+    
+    func testAudioApplicationWithEmptyText() async throws {
+        // 首先加载模型
+        let testURL = URL(string: "https://cdn.avatarkit.com/test-model.avatar")!
+        try await renderer.loadModel(from: testURL)
+        
+        do {
+            try await renderer.applyAudio(text: "")
+            XCTFail("Expected audio application to fail with empty text")
+        } catch let error as AvatarError {
+            XCTAssertEqual(error, .invalidInput)
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+    
+    // MARK: - 状态管理测试
+    
+    func testStateTransitions() async throws {
+        var stateChanges: [AvatarRenderer.State] = []
+        
+        renderer.statePublisher
+            .sink { state in
+                stateChanges.append(state)
+            }
+            .store(in: &cancellables)
+        
+        let testURL = URL(string: "https://cdn.avatarkit.com/test-model.avatar")!
+        
+        // 加载模型
+        try await renderer.loadModel(from: testURL)
+        
+        // 应用音频
+        try await renderer.applyAudio(text: "Test message")
+        
+        // 验证状态转换序列
+        let expectedStates: [AvatarRenderer.State] = [.idle, .loading, .ready, .processing, .ready]
+        XCTAssertEqual(stateChanges, expectedStates)
+    }
+    
+    // MARK: - 内存管理测试
+    
+    func testMemoryManagement() {
+        weak var weakRenderer: AvatarRenderer?
+        
+        autoreleasepool {
+            let tempRenderer = AvatarRenderer(frame: .zero)
+            weakRenderer = tempRenderer
+            // tempRenderer 在这里超出作用域
+        }
+        
+        XCTAssertNil(weakRenderer, "AvatarRenderer should be deallocated")
+    }
+    
+    func testDelegateWeakReference() {
+        weak var weakDelegate: MockAvatarRendererDelegate?
+        
+        autoreleasepool {
+            let tempDelegate = MockAvatarRendererDelegate()
+            weakDelegate = tempDelegate
+            renderer.delegate = tempDelegate
+            // tempDelegate 在这里超出作用域
+        }
+        
+        XCTAssertNil(weakDelegate, "Delegate should be deallocated")
+        XCTAssertNil(renderer.delegate, "Renderer should not retain delegate")
+    }
+}
+
+// MARK: - Mock Delegate
+
+class MockAvatarRendererDelegate: AvatarRendererDelegate {
+    var didStartCalled = false
+    var didStopCalled = false
+    var didLoadModelCalled = false
+    var didApplyAudioCalled = false
+    var didFailWithErrorCalled = false
+    var didUpdateProgressCalled = false
+    
+    var onDidStart: (() -> Void)?
+    var onDidStop: (() -> Void)?
+    var onDidLoadModel: (() -> Void)?
+    var onDidApplyAudio: (() -> Void)?
+    var onDidFailWithError: ((Error) -> Void)?
+    var onDidUpdateProgress: ((Float, String?) -> Void)?
+    
+    func avatarRendererDidStart(_ renderer: AvatarRenderer) {
+        didStartCalled = true
+        onDidStart?()
+    }
+    
+    func avatarRendererDidStop(_ renderer: AvatarRenderer) {
+        didStopCalled = true
+        onDidStop?()
+    }
+    
+    func avatarRenderer(_ renderer: AvatarRenderer, didLoadModel model: AvatarModel) {
+        didLoadModelCalled = true
+        onDidLoadModel?()
+    }
+    
+    func avatarRenderer(_ renderer: AvatarRenderer, didApplyAudio audioData: Data) {
+        didApplyAudioCalled = true
+        onDidApplyAudio?()
+    }
+    
+    func avatarRenderer(_ renderer: AvatarRenderer, didFailWithError error: Error) {
+        didFailWithErrorCalled = true
+        onDidFailWithError?(error)
+    }
+    
+    func avatarRenderer(_ renderer: AvatarRenderer, didUpdateProgress progress: Float, message: String?) {
+        didUpdateProgressCalled = true
+        onDidUpdateProgress?(progress, message)
+    }
+}```
+
+<Check>
+这个测试套件覆盖了初始化、模型加载、音频应用、状态管理和内存管理等核心功能。
+</Check>
+
+### 集成测试
+
+<Info>
+集成测试验证不同组件之间的协作，确保整个系统的正常运行。
+</Info>
+
+#### 端到端集成测试
+
+```swift title="完整工作流程集成测试"
+class AvatarIntegrationTests: XCTestCase {
+    var renderer: AvatarRenderer!
+    var testModelURL: URL!
+    var performanceMonitor: AvatarPerformanceMonitor!
+    
+    override func setUp() {
+        super.setUp()
+        
+        let config = AvatarConfig(
+            renderQuality: .medium,
+            enableAudio: true,
+            maxCacheSize: 50 * 1024 * 1024
+        )
+        
+        renderer = AvatarRenderer(frame: CGRect(x: 0, y: 0, width: 300, height: 400), config: config)
+        testModelURL = URL(string: "https://cdn.avatarkit.com/integration-test-model.avatar")!
+        performanceMonitor = AvatarPerformanceMonitor.shared
     }
     
     override func tearDown() {
         renderer = nil
+        performanceMonitor = nil
         super.tearDown()
     }
     
-    func testModelLoading() {
-        let expectation = XCTestExpectation(description: "模型加载完成")
+    // MARK: - 完整工作流程测试
+    
+    func testCompleteWorkflow() async throws {
+        let expectation = expectation(description: "Complete workflow")
+        var workflowSteps: [String] = []
         
-        renderer.delegate = self
-        delegateExpectation = expectation
+        let delegate = WorkflowTrackingDelegate { step in
+            workflowSteps.append(step)
+            if step == "audio_applied" {
+                expectation.fulfill()
+            }
+        }
+        
+        renderer.delegate = delegate
+        
+        // 1. 加载模型
+        try await renderer.loadModel(from: testModelURL)
+        
+        // 2. 应用音频
+        try await renderer.applyAudio(text: "This is an integration test message.")
+        
+        await fulfillment(of: [expectation], timeout: 30.0)
+        
+        let expectedSteps = ["model_loaded", "audio_applied"]
+        XCTAssertEqual(workflowSteps, expectedSteps)
+    }
+    
+    func testMultipleAudioApplications() async throws {
+        // 加载模型
+        try await renderer.loadModel(from: testModelURL)
+        
+        let audioTexts = [
+            "First message",
+            "Second message",
+            "Third message"
+        ]
+        
+        for (index, text) in audioTexts.enumerated() {
+            let expectation = expectation(description: "Audio application \(index + 1)")
+            
+            let delegate = SimpleCompletionDelegate {
+                expectation.fulfill()
+            }
+            
+            renderer.delegate = delegate
+            
+            try await renderer.applyAudio(text: text)
+            
+            await fulfillment(of: [expectation], timeout: 15.0)
+        }
+    }
+    
+    func testConcurrentOperations() async throws {
+        // 测试并发操作的处理
+        try await renderer.loadModel(from: testModelURL)
+        
+        let concurrentTasks = (1...5).map { index in
+            Task {
+                try await renderer.applyAudio(text: "Concurrent message \(index)")
+            }
+        }
+        
+        // 等待所有任务完成
+        for task in concurrentTasks {
+            try await task.value
+        }
+    }
+    
+    // MARK: - 性能测试
+    
+    func testModelLoadingPerformance() async throws {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        
+        try await renderer.loadModel(from: testModelURL)
+        
+        let loadingTime = CFAbsoluteTimeGetCurrent() - startTime
+        
+        // 模型加载应该在 10 秒内完成
+        XCTAssertLessThan(loadingTime, 10.0, "Model loading took too long: \(loadingTime) seconds")
+        
+        // 记录性能指标
+        performanceMonitor.recordMetric(
+            name: "model_loading_time",
+            value: loadingTime,
+            category: "performance"
+        )
+    }
+    
+    func testAudioProcessingPerformance() async throws {
+        try await renderer.loadModel(from: testModelURL)
+        
+        let testText = "This is a performance test message for audio processing."
+        let startTime = CFAbsoluteTimeGetCurrent()
+        
+        try await renderer.applyAudio(text: testText)
+        
+        let processingTime = CFAbsoluteTimeGetCurrent() - startTime
+        
+        // 音频处理应该在 5 秒内完成
+        XCTAssertLessThan(processingTime, 5.0, "Audio processing took too long: \(processingTime) seconds")
+        
+        performanceMonitor.recordMetric(
+            name: "audio_processing_time",
+            value: processingTime,
+            category: "performance"
+        )
+    }
+    
+    func testMemoryUsage() async throws {
+        let initialMemory = getMemoryUsage()
+        
+        // 加载模型
+        try await renderer.loadModel(from: testModelURL)
+        
+        let afterLoadingMemory = getMemoryUsage()
+        
+        // 应用多个音频
+        for i in 1...10 {
+            try await renderer.applyAudio(text: "Memory test message \(i)")
+        }
+        
+        let finalMemory = getMemoryUsage()
+        
+        // 内存增长应该在合理范围内（小于 100MB）
+        let memoryIncrease = finalMemory - initialMemory
+        XCTAssertLessThan(memoryIncrease, 100 * 1024 * 1024, "Memory usage increased too much: \(memoryIncrease) bytes")
+        
+        performanceMonitor.recordMetric(
+            name: "memory_usage_increase",
+            value: Double(memoryIncrease),
+            category: "memory"
+        )
+    }
+    
+    // MARK: - 错误恢复测试
+    
+    func testNetworkErrorRecovery() async throws {
+        // 模拟网络错误后的恢复
+        let invalidURL = URL(string: "https://invalid-domain.com/model.avatar")!
         
         do {
-            let testURL = URL(string: "https://cdn.example.com/test.avatar")!
-            try renderer.load(model: testURL)
+            try await renderer.loadModel(from: invalidURL)
+            XCTFail("Expected network error")
         } catch {
-            XCTFail("模型加载失败: \(error)")
+            // 预期的网络错误
         }
         
-        wait(for: [expectation], timeout: 10.0)
+        // 验证可以从错误中恢复
+        try await renderer.loadModel(from: testModelURL)
+        XCTAssertEqual(renderer.state, .ready)
+    }
+    
+    func testModelCorruptionHandling() async {
+        let corruptModelURL = URL(string: "https://cdn.avatarkit.com/corrupt-model.avatar")!
+        
+        do {
+            try await renderer.loadModel(from: corruptModelURL)
+            XCTFail("Expected model corruption error")
+        } catch let error as AvatarError {
+            XCTAssertEqual(error, .modelCorrupted)
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+    
+    // MARK: - 辅助方法
+    
+    private func getMemoryUsage() -> Int64 {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size)/4
+        
+        let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
+                task_info(mach_task_self_,
+                         task_flavor_t(MACH_TASK_BASIC_INFO),
+                         $0,
+                         &count)
+            }
+        }
+        
+        if kerr == KERN_SUCCESS {
+            return Int64(info.resident_size)
+        } else {
+            return 0
+        }
     }
 }
+
+// MARK: - 测试辅助类
+
+class WorkflowTrackingDelegate: AvatarRendererDelegate {
+    private let onStep: (String) -> Void
+    
+    init(onStep: @escaping (String) -> Void) {
+        self.onStep = onStep
+    }
+    
+    func avatarRenderer(_ renderer: AvatarRenderer, didLoadModel model: AvatarModel) {
+        onStep("model_loaded")
+    }
+    
+    func avatarRenderer(_ renderer: AvatarRenderer, didApplyAudio audioData: Data) {
+        onStep("audio_applied")
+    }
+    
+    func avatarRenderer(_ renderer: AvatarRenderer, didFailWithError error: Error) {
+        onStep("error_occurred")
+    }
+}
+
+class SimpleCompletionDelegate: AvatarRendererDelegate {
+    private let onCompletion: () -> Void
+    
+    init(onCompletion: @escaping () -> Void) {
+        self.onCompletion = onCompletion
+    }
+    
+    func avatarRenderer(_ renderer: AvatarRenderer, didApplyAudio audioData: Data) {
+        onCompletion()
+    }
+}```
+
+<Tip>
+定期运行集成测试和性能测试，确保 SDK 在不同场景下的稳定性和性能表现。
+</Tip>
 ```
-
-### 集成测试
-
-测试完整的集成流程。
-
-```swift
-class AvatarIntegrationTests: XCTestCase {
-    func testFullIntegration() {
-        // 1. 初始化 SDK
-        let config = AvatarConfig(
-            appId: "test_app_id",
-            appSecret: "test_app_secret",
-            environment: .development
-        )
-        
-        let initExpectation = XCTestExpectation(description: "SDK 初始化")
-        AvatarSDK.initialize(with: config) { result in
-            XCTAssertTrue(result.isSuccess)
-            initExpectation.fulfill()
-        }
-        
-        wait(for: [initExpectation], timeout: 5.0)
-        
-        // 2. 创建渲染器
-        let renderer = AvatarRenderer(frame: CGRect(x: 0, y: 0, width: 300, height: 400))
-        
-        // 3. 加载模型
-        let loadExpectation = XCTestExpectation(description: "模型加载")
-        // ... 测试代码
-    }
-}
-``` 
